@@ -9,50 +9,43 @@ Z1.html: 18/18 ngày lễ 2026, gồm 振替休日・国民の休日).
 
 ```
 m5-gantt-addin/
-├── manifest.xml       ← manifest của add-in (sideload vào Excel qua registry)
-├── taskpane.html/.js/.css ← panel điều khiển + logic
-├── server.js          ← server tĩnh phục vụ taskpane (port 8080, không cần Python)
-├── install.bat         ← cài đặt 1-click (đăng ký + tự bật server khi mở máy)
-├── install.cjs         ← phần lõi của install.bat (đăng ký registry + tạo autostart)
-├── start-server.bat   ← khởi động server thủ công (double-click)
-├── uninstall.cjs      ← gỡ add-in khỏi Excel (và bỏ autostart)
+├── manifest.xml       ← manifest của add-in (trỏ tới GitHub Pages, sideload qua registry)
+├── taskpane.html/.js/.css ← panel điều khiển + logic (host trên GitHub Pages)
+├── install.bat / install.cjs ← cài đặt 1-click (đăng ký add-in vào Excel)
+├── uninstall.cjs      ← gỡ add-in khỏi Excel
+├── server.js, start-server.bat ← chỉ dùng khi PHÁT TRIỂN cục bộ (xem mục cuối)
 └── assets/            ← icon
 ```
 
 **Không cần build, không cần webpack, không cần node_modules.**
 
-## Gửi cho đồng nghiệp dùng trên máy khác
+## Nội dung được host ở đâu
 
-Copy nguyên thư mục `m5-gantt-addin/` (USB, chia sẻ file, v.v.) sang máy của đồng
-nghiệp — **không cần server chung, mỗi người tự chạy 1 bản trên máy mình**:
+Toàn bộ taskpane (html/js/css/icon) được host tĩnh trên **GitHub Pages**, tại
+`https://manh25xx08xx99-sys.github.io/Gantt-chart/` — build từ repo
+[manh25xx08xx99-sys/Gantt-chart](https://github.com/manh25xx08xx99-sys/Gantt-chart),
+nhánh `main`, thư mục gốc. `manifest.xml` đã trỏ sẵn tới URL này.
 
-1. Cài **Node.js** (bản LTS) từ https://nodejs.org/ nếu máy chưa có.
-2. Double-click **`install.bat`** trong thư mục — script sẽ tự:
-   - Đăng ký add-in vào Excel (registry, chỉ ảnh hưởng user hiện tại).
-   - Tạo 1 file trong thư mục **Startup** của Windows để server tự chạy ngầm
-     mỗi khi đăng nhập máy (không cần double-click `start-server.bat` nữa).
-   - Khởi động server ngay lập tức.
+**Cập nhật tự động:** mỗi khi push code mới lên nhánh `main`, GitHub Pages tự
+build lại (thường trong ~1 phút). Máy nào đã sideload `manifest.xml` sẽ tự lấy
+bản mới nhất ở lần mở task pane tiếp theo — **không cần cài lại, không cần
+đồng nghiệp làm gì thêm.**
+
+## Cài đặt (máy mình hoặc máy đồng nghiệp)
+
+Không cần Node.js chạy server nữa — chỉ cần **1 file `manifest.xml`** trỏ vào
+registry của Excel. Cách nhanh nhất:
+
+1. Copy thư mục `m5-gantt-addin/` (hoặc tối thiểu là `manifest.xml`) sang máy
+   cần cài (USB, chia sẻ file...).
+2. Double-click **`install.bat`** — script sẽ đăng ký add-in vào Excel (registry,
+   chỉ ảnh hưởng user hiện tại trên máy đó). Cần **Node.js** (bản LTS,
+   https://nodejs.org/) chỉ để chạy lệnh đăng ký này, không dùng để chạy server.
 3. Mở Excel → tab **Home** → nút **工程表ツール** (nhóm 施工計画書) → task pane mở ra.
 
-Muốn gỡ: chạy `node uninstall.cjs` (xóa cả đăng ký registry lẫn autostart).
+Muốn gỡ: chạy `node uninstall.cjs`.
 
-⚠ Đây là add-in **sideload kiểu dev** (không qua Store/M365 admin), nên mỗi máy
-cần tự cài 1 lần như trên; không có bước "cài tập trung" nào thay được việc này
-nếu công ty chưa có SharePoint/M365 admin hoặc server nội bộ HTTPS.
-
-## Cách chạy (2 bước, dùng thủ công / máy đang phát triển)
-
-**Bước 1 — khởi động server:** double-click **`start-server.bat`**
-(một cửa sổ đen hiện "工程表ツールのサーバを起動しました" — **giữ nguyên cửa sổ này mở**
-khi dùng Excel; đóng cửa sổ = task pane không tải được).
-
-**Bước 2 — mở Excel:** add-in đã được sideload vào registry (ID
-`dfc3fd23-ff19-4d33-b312-a15d117dd27d` → `manifest.xml` trong thư mục này).
-Khởi động Excel, mở file bất kỳ → **Insert → My Add-ins** (hoặc gõ "my add-ins"
-vào ô **Tell Me** cạnh tab) → tab **SHARED FOLDER** → chọn
-**工程表ツール（5.工程表）** → **Add**. Task pane mở ra bên phải.
-
-> Đăng ký lại registry nếu bị mất (chạy trong PowerShell):
+> Không có Node.js / muốn đăng ký thủ công thì chạy PowerShell:
 > ```powershell
 > New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Wef\Developer' `
 >   -Name 'dfc3fd23-ff19-4d33-b312-a15d117dd27d' `
@@ -60,6 +53,10 @@ vào ô **Tell Me** cạnh tab) → tab **SHARED FOLDER** → chọn
 > ```
 > (Đừng dùng `reg add` trong Git Bash — nó bị biến các switch `/v /t /d /f`
 > thành đường dẫn.)
+
+⚠ Đây vẫn là add-in **sideload kiểu dev** (không qua Store/M365 admin), nên mỗi
+máy cần tự đăng ký 1 lần như trên; khác với trước là **không cần chạy server**
+và **cập nhật code thì tự động** (nhờ GitHub Pages).
 
 ## Cách dùng
 
@@ -89,34 +86,33 @@ vào ô **Tell Me** cạnh tab) → tab **SHARED FOLDER** → chọn
 
 ## Gỡ add-in
 
-Chạy `node uninstall.cjs` trong thư mục này (xóa đăng ký registry **và** file
-autostart nếu có), rồi khởi động lại Excel. Muốn dùng lại: chạy `install.bat`
-(hoặc lệnh đăng ký PowerShell ở phần trên).
+Chạy `node uninstall.cjs` trong thư mục này (xóa đăng ký registry), rồi khởi
+động lại Excel. Muốn dùng lại: chạy `install.bat` (hoặc lệnh đăng ký PowerShell
+ở phần trên).
 
-⚠ Nếu di chuyển thư mục này sang chỗ khác, phải đăng ký lại với đường dẫn mới.
+⚠ `manifest.xml` phải là **file cục bộ** trên máy đó (registry trỏ tới đường
+dẫn file, không phải URL), dù nội dung nó tham chiếu tới GitHub Pages.
+
+## Phát triển / sửa code cục bộ
+
+Khi cần sửa và xem trước TRƯỚC KHI push lên GitHub:
+
+1. Double-click **`start-server.bat`** để chạy server tĩnh cục bộ (port 8080).
+2. Tạo 1 bản `manifest.xml` khác (hoặc sửa tạm) trỏ về `http://localhost:8080/...`
+   thay vì URL GitHub Pages, đăng ký sideload bản đó riêng để test.
+3. Test xong, sửa code thật trong repo, `git add . && git commit && git push` —
+   GitHub Pages tự build lại và mọi máy (kể cả máy dùng bản manifest GitHub Pages)
+   sẽ thấy bản mới ở lần mở task pane tiếp theo.
 
 ## Khắc phục sự cố
 
 | Hiện tượng | Nguyên nhân / cách xử lý |
 |---|---|
 | `エラー：... Worksheet.delete ... GeneralException (0xA7120001)` khi sinh chart | Sheet cũ không xóa được (sách đang 構成保護 / đang chỉnh sửa ô / sheet duy nhất). Add-in sẽ tự **tái sử dụng sheet cũ** (gỡ merge, xóa shape, xóa dữ liệu) nên thường tự vượt qua; nếu vẫn lỗi: Enter/Esc để thoát chế độ chỉnh sửa ô, hoặc kiểm tra レビュー→シートの保護/ブックの保護 |
-| Task pane trắng / "ADD-IN ERROR" | Server chưa chạy → double-click `start-server.bat`. Excel cache add-in cũ: xóa thư mục `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\` rồi khởi động lại Excel |
-| Không tìm thấy add-in trong My Add-ins | Chưa khởi động lại Excel hoàn toàn sau khi sideload; hoặc registry value bị xóa → chạy lại lệnh đăng ký ở trên. Tab đúng là **SHARED FOLDER** |
-| Task pane không tải được localhost | Một số máy chặn loopback trong WebView2: chạy `CheckNetIsolation LoopbackExempt -a -n="Microsoft.Win32WebViewHost_cw5n1h2txyewy"` rồi khởi động lại Excel |
+| Task pane trắng / "ADD-IN ERROR" | Kiểm tra máy có mạng để tải GitHub Pages không. Excel cache add-in cũ: xóa thư mục `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\` rồi khởi động lại Excel |
+| Không tìm thấy add-in / nút 工程表ツール | Chưa khởi động lại Excel hoàn toàn sau khi sideload; hoặc registry value bị xóa → chạy lại `install.bat` hoặc lệnh đăng ký PowerShell ở trên |
+| Sửa code xong nhưng Excel vẫn hiện bản cũ | Chờ GitHub Pages build xong (~1-2 phút, xem tab **Actions** trên GitHub), rồi đóng hẳn task pane và mở lại (không chỉ ẩn/hiện) |
 | `reg add` báo Invalid syntax | Đang chạy trong Git Bash (switch `/v` bị hiểu là đường dẫn) → dùng PowerShell như ở trên |
-
-## Chuyển sang dùng thật lâu dài (không cần server)
-
-Hiện manifest trỏ tới `http://localhost:8080` (chạy thử). Khi muốn dùng ổn định trên
-máy công ty mà không cần chạy server, có 2 lựa chọn:
-
-- **GitHub Pages** (khuyên dùng — công ty đã dùng GitHub): push thư mục này lên repo,
-  bật GitHub Pages, rồi sửa trong `manifest.xml` các URL
-  `http://localhost:8080/...` thành `https://<user>.github.io/<repo>/...`
-  (các chỗ: IconUrl, HighResolutionIconUrl, SupportUrl, AppDomains,
-  DefaultSettings/SourceLocation, và 3 bt:Url/bt:Image trong Resources), sideload lại.
-- **IIS / server nội bộ công ty**: đặt thư mục vào web server HTTPS của công ty và sửa
-  URL tương tự.
 
 ## Mức độ đã kiểm chứng
 

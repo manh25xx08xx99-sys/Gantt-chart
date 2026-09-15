@@ -1,5 +1,6 @@
 @echo off
 rem Cai dat Add-in "Cong trinh do" (工程表ツール) cho Excel tren may nay.
+rem Taskpane duoc host san tren GitHub Pages - khong can chay server cuc bo.
 rem Double-click de chay - khong can mo terminal thu cong.
 cd /d "%~dp0"
 
@@ -19,13 +20,8 @@ if errorlevel 1 (
 )
 
 echo.
-echo Dang khoi dong server ngay bay gio...
-start "" /min node server.js
-
-echo.
 echo ================================================================
 echo  Hoan tat! Mo Excel, vao tab Home, tim nut "工程表ツール".
 echo  (Neu chua thay, dong het Excel roi mo lai.)
-echo  Server se tu dong chay ngam moi lan dang nhap Windows.
 echo ================================================================
 pause

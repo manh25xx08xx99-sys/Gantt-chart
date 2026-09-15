@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <Id>dfc3fd23-ff19-4d33-b312-a15d117dd27d</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>施工計画書ツール</ProviderName>
+  <DefaultLocale>ja-JP</DefaultLocale>
+  <DisplayName DefaultValue="工程表ツール（5.工程表）" />
+  <Description DefaultValue="石綿除去工事の工程表（ガントチャート）を、日本の祝日を考慮してExcelシートに直接生成します。" />
+  <IconUrl DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-64.png" />
+  <SupportUrl DefaultValue="https://github.com/manh25xx08xx99-sys/Gantt-chart" />
+
+  <AppDomains>
+    <AppDomain>https://manh25xx08xx99-sys.github.io</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="ExcelApi" MinVersion="1.9" />
+    </Sets>
+  </Requirements>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/taskpane.html" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title" />
+            <Description resid="GetStarted.Description" />
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl" />
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="M5Gantt.Group">
+                <Label resid="M5Gantt.GroupLabel" />
+                <Icon>
+                  <bt:Image size="16" resid="M5Gantt.Icon16" />
+                  <bt:Image size="32" resid="M5Gantt.Icon32" />
+                  <bt:Image size="80" resid="M5Gantt.Icon80" />
+                </Icon>
+                <Control xsi:type="Button" id="M5Gantt.TaskpaneButton">
+                  <Label resid="M5Gantt.ButtonLabel" />
+                  <Supertip>
+                    <Title resid="M5Gantt.ButtonLabel" />
+                    <Description resid="M5Gantt.ButtonTooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="M5Gantt.Icon16" />
+                    <bt:Image size="32" resid="M5Gantt.Icon32" />
+                    <bt:Image size="80" resid="M5Gantt.Icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>M5Gantt.Taskpane</TaskpaneId>
+                    <SourceLocation resid="M5Gantt.TaskpaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="M5Gantt.Icon16" DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-16.png" />
+        <bt:Image id="M5Gantt.Icon32" DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-32.png" />
+        <bt:Image id="M5Gantt.Icon80" DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="M5Gantt.TaskpaneUrl" DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/taskpane.html" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/manh25xx08xx99-sys/Gantt-chart" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="工程表ツールが読み込まれました" />
+        <bt:String id="M5Gantt.GroupLabel" DefaultValue="施工計画書" />
+        <bt:String id="M5Gantt.ButtonLabel" DefaultValue="工程表ツール" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="ホームタブの「工程表ツール」ボタンから、ガントチャートの生成パネルを開けます。" />
+        <bt:String id="M5Gantt.ButtonTooltip" DefaultValue="クリックすると工程表（ガントチャート）の生成パネルが開きます。" />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

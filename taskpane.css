@@ -1,0 +1,149 @@
+:root{
+  --ink:#1c1c1c;
+  --line:#d7d1c4;
+  --accent:#8a5a3b;
+  --accent-soft:#f4ede3;
+  --panel:#faf8f4;
+  --head-fill:#f5f1e9;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:"Yu Gothic","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  font-size:12px;
+  color:var(--ink);
+  background:var(--panel);
+}
+header{
+  background:#1c1c1c;
+  color:#fff;
+  padding:10px 14px;
+}
+header h1{margin:0;font-size:14px;font-weight:600;}
+header p{margin:2px 0 0;font-size:10.5px;color:#c9c2b4;}
+main{padding:10px 10px 14px;}
+
+/* ---- 入力表（Z1.html の 5.工程表入力表と同じ見た目） ---- */
+.sat-check{
+  display:flex;align-items:flex-start;gap:6px;cursor:pointer;line-height:1.5;
+  background:var(--head-fill);border-radius:6px;padding:8px 10px;margin:0 0 10px;
+}
+.sat-check input{margin-top:2px;}
+.special-holiday{
+  margin:-3px 0 10px;
+  padding:7px 8px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:5px;
+}
+.special-holiday-controls{display:flex;gap:6px;align-items:center;}
+.special-holiday-label{flex:1;font:inherit;font-size:11px;font-weight:600;color:#333;}
+.special-holiday-controls input{min-width:0;flex:0 0 auto;width:96px;font:inherit;font-size:10px;padding:2px 3px;}
+.special-holiday-controls::after{content:"";flex:1;}.special-holiday-controls button{
+  flex:0 0 auto;border:1px solid var(--accent);border-radius:4px;
+  background:var(--accent-soft);color:var(--accent);padding:5px 7px;font:inherit;font-size:10.5px;cursor:pointer;
+}
+.special-holiday-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+.holiday-chip{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 5px;border-radius:10px;
+  background:#f1eeee;color:#555;font-size:10.5px;
+}
+.holiday-chip button{
+  border:none;background:transparent;color:#9b3e3e;font:inherit;font-size:12px;line-height:1;cursor:pointer;padding:0;
+}
+.holiday-empty{font-size:10.5px;color:#777;}
+table.sched{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+  background:#fff;
+}
+table.sched th,table.sched td{
+  border:1px solid #c9c2b4;
+  padding:2px 3px;
+  text-align:left;
+  overflow:hidden;
+}
+table.sched th{
+  background:var(--head-fill);
+  font-size:10px;
+  font-weight:600;
+  text-align:center;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+.c-name{width:15%;}
+.c-date{width:16%;}
+.c-days{width:10%;}
+td.date-cell input{width:100%;font-size:10px;}
+.c-note{width:12%;}
+.c-color{width:23%;}
+.c-del{width:8%;}
+table.sched input[type="text"],table.sched input[type="date"],table.sched input[type="number"]{
+  width:100%;min-width:0;border:none;background:transparent;font-size:10px;padding:3px 1px;
+  font-family:inherit;
+}
+table.sched input[type="number"]{
+  appearance:textfield;
+  -moz-appearance:textfield;
+}
+table.sched input[type="number"]::-webkit-inner-spin-button,
+table.sched input[type="number"]::-webkit-outer-spin-button{
+  appearance:none;
+  margin:0;
+}
+table.sched input:focus{outline:2px solid var(--accent);border-radius:3px;}
+.c-days-input{text-align:center;}
+.del-btn{
+  border:none;background:none;color:#b33;cursor:pointer;font-size:13px;padding:2px 4px;
+  line-height:1;
+}
+.del-btn:hover{background:#fdecea;border-radius:4px;}
+.color-cell{white-space:nowrap;text-align:center;}
+.color-dot{
+  display:inline-block;width:10px;height:10px;border-radius:50%;margin:0;
+  cursor:pointer;border:2px solid transparent;vertical-align:middle;
+}
+.color-dot.active{border-color:#333;box-shadow:0 0 0 1px #fff inset;}
+.add-row{
+  margin-top:8px;
+  padding:7px 14px;
+  font-size:11.5px;
+  border:1px dashed var(--accent);
+  background:var(--accent-soft);
+  color:var(--accent);
+  border-radius:14px;
+  cursor:pointer;
+}
+.add-row:hover{filter:brightness(0.97);}
+#genBtn{
+  display:block;
+  width:100%;
+  margin-top:12px;
+  padding:10px 12px;
+  font-size:13px;
+  border:none;
+  border-radius:4px;
+  background:var(--accent);
+  color:#fff;
+  cursor:pointer;
+}
+#genBtn:hover{filter:brightness(1.08);}
+#status{
+  margin:8px 2px 10px;
+  font-size:11.5px;
+  min-height:1.2em;
+  line-height:1.5;
+}
+.card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:9px 11px;
+  margin-top:10px;
+}
+.card h2{margin:0 0 5px;font-size:11.5px;color:var(--accent);}
+.card ul{margin:4px 0 0;padding-left:17px;}
+.card li{margin-bottom:4px;line-height:1.5;color:#555;}
+.card code{background:#f2ede4;border-radius:3px;padding:0 4px;font-size:10.5px;}
+.empty-hint{color:#888;text-align:center;padding:10px 4px;}

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工程表ツール</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<link rel="stylesheet" href="taskpane.css?v=20260915c">
+</head>
+<body>
+  <header>
+    <h1>工程表ツール</h1>
+    <p>施工計画書 5.工程表（ガントチャート）・ v1.3</p>
+  </header>
+
+  <main>
+    <label class="sat-check">
+      <input type="checkbox" id="satCheck" checked>
+      土曜日も稼働する（チェックを外すと、土曜日はすべて休み扱いになり色が付きません）
+    </label>
+    <label class="sat-check">
+      <input type="checkbox" id="progressChartCheck">
+      進捗率グラフ（出来高累計％の折れ線）も出力する
+    </label>
+    <label class="sat-check">
+      <input type="checkbox" id="manpowerModeCheck">
+      労務者数グラフを使う（各作業に人工数入力欄を追加）
+    </label>
+    <section class="special-holiday" aria-label="特別休業日">
+      <div class="special-holiday-controls">
+        <button type="button" id="addHolidayBtn">休日追加</button>
+        <input type="date" id="specialHolidayDate" aria-label="特別休業日">
+      </div>
+      <div id="specialHolidayList" class="special-holiday-list"></div>
+    </section>
+
+    <table class="sched" id="schedTable">
+      <thead>
+        <tr>
+          <th class="c-name">作業内容</th>
+          <th class="c-date">開始日</th>
+          <th class="c-date">終了日</th>
+          <th class="c-days" title="日数を入力すると、開始日から自動で終了日を計算します">所要<br>日数</th>
+          <th class="c-note">備考</th>
+          <th class="c-color">色</th>
+          <th class="c-del"></th>
+        </tr>
+      </thead>
+      <tbody id="schedBody"></tbody>
+    </table>
+    <button type="button" id="addBtn" class="add-row">＋ 作業を追加</button>
+
+    <button type="button" id="genBtn" class="primary">🔄 ガントチャートを生成</button>
+    <p id="status"></p>
+
+    <section class="card hint">
+      <h2>ヒント</h2>
+      <ul>
+        <li>開始日・終了日は日付欄のカレンダー（🗓）から選んでください。</li>
+        <li>「所要日数」に数字を入れると、開始日から土日祝を除いた稼働日で終了日を自動計算します（終了日欄は上書きされます）。</li>
+        <li>ガントチャートの棒は土日・祝日（振替休日含む）を自動で抜きます。</li>
+        <li>「特別休業日」に日付を追加すると、その日は日曜・祝日と同じ休み扱いになります（棒も所要日数の計算も抜きます）。</li>
+        <li>「ガントチャート」シートは、生成のたびに作り直されます。</li>
+        <li>「労務者数グラフを使う」をオンにすると、各作業に人工数入力欄（1行）が増えます。Excel側でその行に日ごとの人数を入力してから、「🔄 ガントチャートを生成」をもう一度押すと、入力済みの人工数を引き継いだまま再生成し、人工数（人数×日数）を基準にした進捗率と労務者数の棒グラフも一緒に描き直します（作業リスト・日数が前回と同じ場合のみ正しく引き継がれます）。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="taskpane.js?v=20260915c"></script>
+</body>
+</html>

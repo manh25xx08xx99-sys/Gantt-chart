@@ -11,8 +11,9 @@ Z1.html: 18/18 ngày lễ 2026, gồm 振替休日・国民の休日).
 m5-gantt-addin/
 ├── manifest.xml       ← manifest của add-in (trỏ tới GitHub Pages, sideload qua registry)
 ├── taskpane.html/.js/.css ← panel điều khiển + logic (host trên GitHub Pages)
-├── install.bat / install.cjs ← cài đặt 1-click (đăng ký add-in vào Excel)
-├── uninstall.cjs      ← gỡ add-in khỏi Excel
+├── install.bat         ← cài đặt 1-click (không cần Node.js) — chỉ cần file này + manifest.xml
+├── uninstall.bat        ← gỡ add-in (không cần Node.js)
+├── install.cjs / uninstall.cjs ← bản Node.js tương đương (tùy chọn)
 ├── server.js, start-server.bat ← chỉ dùng khi PHÁT TRIỂN cục bộ (xem mục cuối)
 └── assets/            ← icon
 ```
@@ -33,19 +34,25 @@ bản mới nhất ở lần mở task pane tiếp theo — **không cần cài 
 
 ## Cài đặt (máy mình hoặc máy đồng nghiệp)
 
-Không cần Node.js chạy server nữa — chỉ cần **1 file `manifest.xml`** trỏ vào
-registry của Excel. Cách nhanh nhất:
+Không cần Node.js, không cần chạy server — taskpane đã host sẵn trên GitHub
+Pages, máy chỉ cần đăng ký 1 dòng registry trỏ vào `manifest.xml`.
 
-1. Copy thư mục `m5-gantt-addin/` (hoặc tối thiểu là `manifest.xml`) sang máy
-   cần cài (USB, chia sẻ file...).
-2. Double-click **`install.bat`** — script sẽ đăng ký add-in vào Excel (registry,
-   chỉ ảnh hưởng user hiện tại trên máy đó). Cần **Node.js** (bản LTS,
-   https://nodejs.org/) chỉ để chạy lệnh đăng ký này, không dùng để chạy server.
+**Gửi cho đồng nghiệp: chỉ cần 2 file, để chung 1 thư mục:**
+- `manifest.xml`
+- `install.bat`
+
+Cách cài:
+
+1. Copy 2 file trên (email, USB, chia sẻ file...) vào 1 thư mục bất kỳ trên máy
+   cần cài — vị trí không quan trọng, miễn 2 file nằm **cùng chỗ**.
+2. Double-click **`install.bat`** — tự đăng ký add-in vào Excel (chỉ ảnh hưởng
+   user hiện tại trên máy đó, không cần quyền admin, không cần cài gì thêm).
 3. Mở Excel → tab **Home** → nút **工程表ツール** (nhóm 施工計画書) → task pane mở ra.
 
-Muốn gỡ: chạy `node uninstall.cjs`.
+Muốn gỡ: double-click **`uninstall.bat`** (cùng thư mục, cũng không cần Node.js).
 
-> Không có Node.js / muốn đăng ký thủ công thì chạy PowerShell:
+> Có Node.js thì cũng có thể dùng `node install.cjs` / `node uninstall.cjs`
+> (làm y hệt install.bat/uninstall.bat) — hoặc đăng ký thủ công qua PowerShell:
 > ```powershell
 > New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Wef\Developer' `
 >   -Name 'dfc3fd23-ff19-4d33-b312-a15d117dd27d' `
@@ -56,7 +63,8 @@ Muốn gỡ: chạy `node uninstall.cjs`.
 
 ⚠ Đây vẫn là add-in **sideload kiểu dev** (không qua Store/M365 admin), nên mỗi
 máy cần tự đăng ký 1 lần như trên; khác với trước là **không cần chạy server**
-và **cập nhật code thì tự động** (nhờ GitHub Pages).
+và **cập nhật code thì tự động** (nhờ GitHub Pages) — không cần cài lại khi có
+bản mới.
 
 ## Cách dùng
 

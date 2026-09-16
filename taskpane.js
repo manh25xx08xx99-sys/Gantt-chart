@@ -332,31 +332,10 @@ function buildManpowerRowValues(cells, total, mode){
   return out;
 }
 
-// 人工数行のうち、数値が入っている日のインデックス一覧（空欄・0・文字列は無視）
-function filledManpowerIndexes(row, dayCount){
-  var out = [];
-  if(!row) return out;
-  for(var i = 0; i < dayCount; i++){
-    var v = parseFloat(row[i]);
-    if(isFinite(v) && v > 0) out.push(i);
-  }
-  return out;
-}
-
-// 2つの人工数行で「数値が入っている日の並び」が同じか。
-// Excel側の既存データが、今の稼働日（休日追加などで変わった工程）と噛み合っているかの判定に使う。
-// 同じ位置に入っていれば手修正（値だけの違い）、位置がずれていれば工程自体が変わったと判断できる
-function sameManpowerLayout(rowA, rowB, dayCount){
-  var a = filledManpowerIndexes(rowA, dayCount);
-  var b = filledManpowerIndexes(rowB, dayCount);
-  if(a.length !== b.length) return false;
-  for(var i = 0; i < a.length; i++) if(a[i] !== b[i]) return false;
-  return true;
-}
-
 // 2つの人工数行が日ごとの人数まで完全に同じか（空欄・0・非数値はすべて0として比較）。
-// 配分方法の変更（増加⇔減少）は「入っている日」は変わらず「人数」だけ変わるので、
-// 位置だけの比較では検出できない。値まで見て初めて違いが分かる
+// Excel側の既存データが今のタスクペイン設定どおりかを判定するのに使う。
+// 配分方法の変更（増加⇔減少）は「入っている日」は変わらず「人数」だけ変わるため、
+// 入っている日の位置だけを比べても違いは分からない
 function sameManpowerValues(rowA, rowB, dayCount){
   for(var i = 0; i < dayCount; i++){
     var a = parseFloat(rowA && rowA[i]); if(!isFinite(a) || a <= 0) a = 0;
@@ -506,8 +485,8 @@ function showConfirm(message, okLabel, cancelLabel){
       return;
     }
     msgEl.textContent = message;
-    okBtn.textContent = okLabel || "上書きする";
-    cancelBtn.textContent = cancelLabel || "Excel側を残す";
+    okBtn.textContent = okLabel || "タスクペインに合わせる";
+    cancelBtn.textContent = cancelLabel || "Excelに合わせる";
     overlay.hidden = false;
     function cleanup(result){
       overlay.hidden = true;
@@ -1045,8 +1024,9 @@ function generateGantt(){
     // アドインのタスクペインではサポートされないため、タスクペイン内蔵の確認モーダル
     // （showConfirm）を使う。
     if(!manpowerMode) return false;
-    var conflicts = [];
+    var hasConflict = false;
     L.rowsOut.forEach(function(r, i){
+      if(hasConflict) return;
       var old = savedManpowerGrid && savedManpowerGrid[i];
       var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
       var total = parseInt(r.mpTotal, 10);
@@ -1055,28 +1035,14 @@ function generateGantt(){
       if(mpSettingsChanged(i, total, r.mpDist)) return;
       var expected = buildManpowerRowValues(r.cells, total, r.mpDist);
       if(sameManpowerValues(old, expected, L.days.length)) return; // 既に同じ内容なら何も聞かない
-      var reason;
-      if(!mpSettingsTracked(i)) reason = "settings";          // 設定の追跡前（初回のすり合わせ）
-      else if(oldSum !== total) reason = "sum";                // 総人工数そのものが違う
-      else if(!sameManpowerLayout(old, expected, L.days.length)) reason = "layout"; // 稼働日とズレている
-      else reason = "edited";                                  // 同じ日に違う人数＝Excel側で手修正
-      conflicts.push({ index: i, name: r.name || "(名称なし)", reason: reason, oldSum: oldSum, newTotal: total });
+      hasConflict = true;
     });
-    if(conflicts.length === 0) return false;
-    var reasonText = {
-      settings: "：Excel側の人工数がタスクペインの設定と一致していません",
-      sum: "：総人工数が違います",
-      layout: "：配分が今の稼働日と合っていません（休日追加などで工程が変わった可能性）",
-      edited: "：Excel側で人数が手修正されています"
-    };
-    var confirmMsg = "以下の作業は、Excel側の人工数とタスクペインの設定が一致していません。\n\n" +
-      conflicts.map(function(c){
-        var detail = c.reason === "sum" ? "（Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工）" : "";
-        return "・" + c.name + reasonText[c.reason] + detail;
-      }).join("\n") +
-      "\n\nタスクペインの設定で配分し直しますか？\n" +
-      "「上書きする」＝今の稼働日に合わせて配分し直す　／　「Excel側を残す」＝Excel側の値をそのまま残します";
-    return showConfirm(confirmMsg);
+    if(!hasConflict) return false;
+    return showConfirm(
+      "タスクペインの内容とExcelの内容が一致していません。どちらに合わせますか？",
+      "タスクペインに合わせる",
+      "Excelに合わせる"
+    );
   }).then(function(overwrite){
     // (3) シートを改めて開き、なければ新規作成、あれば再利用して中身を全消去する。
     // 労務者数モードなら、そのまま人工数グリッドの書き込み・グラフ描画まで一気に行う
@@ -1881,8 +1847,6 @@ if(typeof module !== "undefined" && module.exports){
     sumManpowerByDay: sumManpowerByDay,
     distributeManpower: distributeManpower,
     buildManpowerRowValues: buildManpowerRowValues,
-    filledManpowerIndexes: filledManpowerIndexes,
-    sameManpowerLayout: sameManpowerLayout,
     sameManpowerValues: sameManpowerValues,
     computeManpowerMajorUnit: computeManpowerMajorUnit,
     computeLayout: computeLayout,

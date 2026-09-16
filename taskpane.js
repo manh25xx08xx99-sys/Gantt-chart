@@ -669,23 +669,45 @@ function refreshDaysInput(tr){
 
 var MP_TOTAL_TITLE = "この作業の総人工数（人日）。Excel側がまだ空欄のときだけ自動配分します";
 
-// ---- 前回Excelへ書き込んだときのタスクペイン設定（総人工数・配分方法）を行ごとに覚えておき、
-//      「ユーザーが設定を変えた」のか「Excel側で手修正された」のかを区別する ----
-function mpSettingsTracked(rowIndex){
-  var r = rows[rowIndex];
-  return !!(r && r.mpAppliedTotal !== undefined && r.mpAppliedTotal !== null && r.mpAppliedTotal !== "");
+// ---- Excelとタスクペインが食い違ったときは常に「どちらに合わせるか」を聞く。
+//      ただし「Excelに合わせる」と決めた状態がそのまま続いている間は聞き直さないよう、
+//      その決定（Excelの中身・総人工数・配分方法・稼働日の並び）を行ごとに覚えておく ----
+function mpRowSignature(row, dayCount){
+  var parts = [];
+  for(var i = 0; i < dayCount; i++){
+    var v = parseFloat(row && row[i]);
+    parts.push(isFinite(v) && v > 0 ? v : 0);
+  }
+  return parts.join(",");
 }
-// 設定を変えた＝明確な指示なので、確認なしで配分し直して良いケース
-function mpSettingsChanged(rowIndex, total, dist){
-  if(!mpSettingsTracked(rowIndex)) return false; // 未追跡（この機能より前のデータ）は変更扱いにしない
-  var r = rows[rowIndex];
-  return String(total) !== String(r.mpAppliedTotal) || (dist || "even") !== (r.mpAppliedDist || "even");
+function mpCellsSignature(cells){
+  return cells.map(function(c){ return c ? 1 : 0; }).join("");
 }
-function markMpApplied(rowIndex, total, dist){
+// 前回「Excelに合わせる」と決めたときから何も変わっていないか
+// （Excelの中身・総人工数・配分方法・工程のどれか1つでも変われば、また聞く）
+function mpDecisionStillValid(rowIndex, rowSig, cellsSig, total, dist){
+  var r = rows[rowIndex];
+  if(!r || !r.mpAcceptedSig) return false;
+  return r.mpAcceptedSig === rowSig &&
+    r.mpAcceptedCells === cellsSig &&
+    String(total) === String(r.mpAcceptedTotal) &&
+    (dist || "even") === (r.mpAcceptedDist || "even");
+}
+function markMpAccepted(rowIndex, rowSig, cellsSig, total, dist){
   var r = rows[rowIndex];
   if(!r) return;
-  r.mpAppliedTotal = String(total);
-  r.mpAppliedDist = dist || "even";
+  r.mpAcceptedSig = rowSig;
+  r.mpAcceptedCells = cellsSig;
+  r.mpAcceptedTotal = String(total);
+  r.mpAcceptedDist = dist || "even";
+}
+function clearMpAccepted(rowIndex){
+  var r = rows[rowIndex];
+  if(!r) return;
+  delete r.mpAcceptedSig;
+  delete r.mpAcceptedCells;
+  delete r.mpAcceptedTotal;
+  delete r.mpAcceptedDist;
 }
 
 // 総人工数が「稼働日数×2人」に足りているか確認する（最低2人/日ルールのため）。
@@ -1031,10 +1053,10 @@ function generateGantt(){
       var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
       var total = parseInt(r.mpTotal, 10);
       if(!(oldSum > 0) || !(total > 0)) return;
-      // タスクペインで総人工数・配分方法を変えた場合は明確な指示なので、確認せず配分し直す
-      if(mpSettingsChanged(i, total, r.mpDist)) return;
       var expected = buildManpowerRowValues(r.cells, total, r.mpDist);
       if(sameManpowerValues(old, expected, L.days.length)) return; // 既に同じ内容なら何も聞かない
+      // 前回「Excelに合わせる」と決めた状態がそのまま続いているなら聞き直さない
+      if(mpDecisionStillValid(i, mpRowSignature(old, L.days.length), mpCellsSignature(r.cells), total, r.mpDist)) return;
       hasConflict = true;
     });
     if(!hasConflict) return false;
@@ -1083,27 +1105,27 @@ function generateGantt(){
             if(!expected) return oldHasData ? old : L.days.map(function(){ return ""; });
             // Excel側が空欄：自動配分をそのまま書き込む
             if(!oldHasData){
-              markMpApplied(i, total, r.mpDist);
+              clearMpAccepted(i);
               return expected;
             }
-            // タスクペインで設定を変えた＝明確な指示なので、確認なしで配分し直す
-            if(mpSettingsChanged(i, total, r.mpDist)){
-              markMpApplied(i, total, r.mpDist);
-              return expected;
-            }
-            // 既に同じ内容なら触らない
+            // 既に同じ内容なら触らない（どちらに合わせても同じ）
             if(sameManpowerValues(old, expected, L.days.length)){
-              markMpApplied(i, total, r.mpDist);
+              clearMpAccepted(i);
               return old;
             }
-            // ここは上のモーダルで確認済みの不一致（設定未追跡・合計違い・稼働日とのズレ・手修正）
+            var rowSig = mpRowSignature(old, L.days.length);
+            var cellsSig = mpCellsSignature(r.cells);
+            // 前回「Excelに合わせる」と決めた状態のままなら、聞かずにその決定を尊重する
+            if(mpDecisionStillValid(i, rowSig, cellsSig, total, r.mpDist)) return old;
+            // ここは上のモーダルで確認済みの不一致
             if(overwrite){
-              markMpApplied(i, total, r.mpDist);
+              clearMpAccepted(i);
               return expected;
             }
-            // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
+            // Excelに合わせる：Excel側を残し、タスクペイン側の総人工数をExcelの実際値に合わせ、
+            // この決定を覚えておく（同じ状態が続く間は聞き直さない）
             if(rows[i]) rows[i].mpTotal = String(oldSum);
-            markMpApplied(i, oldSum, r.mpDist);
+            markMpAccepted(i, rowSig, cellsSig, oldSum, r.mpDist);
             return old;
           });
           saveState();

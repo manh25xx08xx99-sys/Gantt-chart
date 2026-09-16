@@ -955,14 +955,48 @@ function generateGantt(){
           // 総人工数＋配分方法が設定されている場合のみ自動で仮配分」して書き込む。
           // 自動配分はあくまで手入力の代わりの初期値で、書き込んだ後もExcel側で
           // 自由に上書き修正でき、次回生成時もその修正値がそのまま維持される。
+          //
+          // Excel側に既にデータがある「かつ」タスクペインにも総人工数が入力されている
+          // 作業は、どちらを信じるべきか自動判断できないので確認する：上書きする場合は
+          // 総人工数で描き直し、しない場合はタスクペイン側の総人工数をExcelの実際の値に
+          // 合わせておく（次に見たときに数字が食い違って混乱しないように）。
+          var conflicts = [];
+          L.rowsOut.forEach(function(r, i){
+            var old = savedManpowerGrid && savedManpowerGrid[i];
+            var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
+            var total = parseInt(r.mpTotal, 10);
+            if(oldSum > 0 && total > 0 && oldSum !== total){
+              conflicts.push({ index: i, name: r.name || "(名称なし)", oldSum: oldSum, newTotal: total });
+            }
+          });
+          var overwrite = false;
+          if(conflicts.length > 0){
+            var confirmMsg = "以下の作業は、Excel側に既に入力済みの人工数と、タスクペインの総人工数が食い違っています。\n\n" +
+              conflicts.map(function(c){ return "・" + c.name + "：Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工"; }).join("\n") +
+              "\n\nタスクペインの総人工数で上書きしますか？\n" +
+              "「OK」＝上書きする　／　「キャンセル」＝Excel側を残し、タスクペインの総人工数をExcel側の値に合わせます";
+            overwrite = (typeof window !== "undefined" && window.confirm) ? window.confirm(confirmMsg) : false;
+          }
+
           var finalGrid = L.rowsOut.map(function(r, i){
             var old = savedManpowerGrid && savedManpowerGrid[i];
             var oldHasData = Array.isArray(old) && old.some(function(v){ return typeof v === "number" && v > 0; });
-            if(oldHasData) return old;
             var total = parseInt(r.mpTotal, 10);
+            if(oldHasData && total > 0 && total !== (old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0))){
+              if(overwrite) return buildManpowerRowValues(r.cells, total, r.mpDist);
+              // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
+              var oldSum = old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0);
+              if(rows[i]) rows[i].mpTotal = String(oldSum);
+              return old;
+            }
+            if(oldHasData) return old;
             if(total > 0) return buildManpowerRowValues(r.cells, total, r.mpDist);
             return L.days.map(function(){ return ""; });
           });
+          if(conflicts.length > 0 && !overwrite){
+            saveState();
+            renderRows();
+          }
           L.rowsOut.forEach(function(r, i){
             var mpRow = L.taskTop + i * L.ROWS_PER_TASK + 1;
             sheet.getRangeByIndexes(mpRow, 1, 1, L.days.length).values = [finalGrid[i]];

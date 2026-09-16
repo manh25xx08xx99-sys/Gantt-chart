@@ -99,7 +99,8 @@ table.sched input:focus{outline:2px solid var(--accent);border-radius:3px;}
   line-height:1;
 }
 .del-btn:hover{background:#fdecea;border-radius:4px;}
-.color-cell{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px;}
+.color-cell{text-align:center;}
+.color-dots{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px;}
 .color-dot{
   display:inline-block;width:10px;height:10px;border-radius:50%;margin:0;
   cursor:pointer;border:2px solid transparent;vertical-align:middle;flex:0 0 auto;

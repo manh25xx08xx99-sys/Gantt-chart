@@ -482,7 +482,7 @@ function renderRows(){
       '<td class="date-cell"><input type="date" class="end-input" value="' + escHtml(r.end) + '"></td>' +
       '<td><input type="number" min="1" class="days-input" value="' + workingDaysOf(r) + '" placeholder="－" title="日数を入力すると、開始日から自動で終了日を計算します"></td>' +
       '<td><input type="text" class="note-input" value="' + escHtml(r.note) + '" placeholder="備考"></td>' +
-      '<td class="color-cell">' + dots + "</td>" +
+      '<td class="color-cell"><div class="color-dots">' + dots + "</div></td>" +
       '<td><button type="button" class="del-btn" title="この行を削除">✕</button></td>' +
       "</tr>";
   }).join("");

@@ -366,6 +366,11 @@ var specialHolidays = []; // 特別休業日 ["YYYY-MM-DD", ...]（日曜・祝�
 var showProgressChart = false; // 進捗率グラフ（出来高累計％の折れ線）も出力するか
 var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力行を追加）を使うか
 
+// ---- 入力表の列幅（Excelのセルのようにドラッグで変更できる。%単位、合計100） ----
+var COL_KEYS = ["name", "start", "end", "days", "note", "color", "del"];
+var COL_MIN_PCT = { name: 10, start: 8, end: 8, days: 6, note: 8, color: 8, del: 4 };
+var colWidthsPct = null; // 未設定ならCSSの初期値から読み取る
+
 function setStatus(msg, isError){
   var el = document.getElementById("status");
   if(!el) return;
@@ -376,7 +381,7 @@ function setStatus(msg, isError){
 // ---- 保存／復元（localStorageが使えない環境でも続行できるようにtry/catch） ----
 function saveState(){
   try{
-    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode }));
+    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode, colWidthsPct: colWidthsPct }));
   }catch(err){}
 }
 function loadState(){
@@ -389,6 +394,9 @@ function loadState(){
       specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
       showProgressChart = !!saved.showProgressChart;
       manpowerMode = !!saved.manpowerMode;
+      if(saved.colWidthsPct && COL_KEYS.every(function(k){ return typeof saved.colWidthsPct[k] === "number"; })){
+        colWidthsPct = saved.colWidthsPct;
+      }
       return true;
     }
   }catch(err){}
@@ -477,7 +485,10 @@ function renderRows(){
       return '<span class="color-dot' + (c === r.color ? " active" : "") + '" style="background:' + c + ';" data-color="' + c + '" title="' + c + '"></span>';
     }).join("");
     return '<tr data-id="' + r.id + '">' +
-      '<td><input type="text" class="name-input" value="' + escHtml(r.name) + '" placeholder="作業内容"></td>' +
+      '<td><div class="name-cell-inner">' +
+        '<span class="row-drag-handle" title="ドラッグで並べ替え">⠿</span>' +
+        '<input type="text" class="name-input" value="' + escHtml(r.name) + '" placeholder="作業内容">' +
+      '</div></td>' +
       '<td class="date-cell"><input type="date" class="start-input" value="' + escHtml(r.start) + '"></td>' +
       '<td class="date-cell"><input type="date" class="end-input" value="' + escHtml(r.end) + '"></td>' +
       '<td><input type="number" min="1" class="days-input" value="' + workingDaysOf(r) + '" placeholder="－" title="日数を入力すると、開始日から自動で終了日を計算します"></td>' +
@@ -563,6 +574,140 @@ function bindTableEvents(){
     } else if(e.target.closest(".del-btn")){
       removeRow(r.id);
     }
+  });
+}
+
+// ---- 行のドラッグ並べ替え（マウス操作。ハンドル(⠿)からのみ開始する） ----
+function moveRow(sourceId, targetId, before){
+  var fromIdx = rows.findIndex(function(r){ return r.id === sourceId; });
+  if(fromIdx === -1) return;
+  var moved = rows.splice(fromIdx, 1)[0];
+  var toIdx = rows.findIndex(function(r){ return r.id === targetId; });
+  var insertIdx = toIdx === -1 ? rows.length : toIdx + (before ? 0 : 1);
+  rows.splice(insertIdx, 0, moved);
+  saveState();
+  renderRows();
+}
+
+function bindRowDrag(){
+  var body = document.getElementById("schedBody");
+  if(!body) return;
+  var dragTr = null, dragId = null;
+
+  function clearDropMarkers(){
+    body.querySelectorAll("tr[data-id]").forEach(function(r){
+      r.classList.remove("drag-over-top", "drag-over-bottom");
+    });
+  }
+  function rowUnderPoint(x, y){
+    var el = document.elementFromPoint(x, y);
+    return el ? el.closest("tr[data-id]") : null;
+  }
+  function onMove(e){
+    if(!dragTr) return;
+    var overTr = rowUnderPoint(e.clientX, e.clientY);
+    clearDropMarkers();
+    if(overTr && overTr !== dragTr){
+      var rect = overTr.getBoundingClientRect();
+      var isTop = (e.clientY - rect.top) < rect.height / 2;
+      overTr.classList.add(isTop ? "drag-over-top" : "drag-over-bottom");
+    }
+  }
+  function onUp(e){
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.classList.remove("row-dragging");
+    if(!dragTr){ return; }
+    var overTr = rowUnderPoint(e.clientX, e.clientY);
+    clearDropMarkers();
+    dragTr.classList.remove("dragging");
+    if(overTr && overTr !== dragTr){
+      var rect = overTr.getBoundingClientRect();
+      var isTop = (e.clientY - rect.top) < rect.height / 2;
+      moveRow(dragId, Number(overTr.dataset.id), isTop);
+    }
+    dragTr = null; dragId = null;
+  }
+
+  body.addEventListener("mousedown", function(e){
+    var handle = e.target.closest(".row-drag-handle");
+    if(!handle) return;
+    var tr = handle.closest("tr[data-id]");
+    if(!tr) return;
+    e.preventDefault();
+    dragTr = tr;
+    dragId = Number(tr.dataset.id);
+    tr.classList.add("dragging");
+    document.body.classList.add("row-dragging");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+// ---- 入力表の列幅リサイズ（Excelのセル境界のようにドラッグで変更） ----
+function initColumnResize(){
+  var table = document.getElementById("schedTable");
+  var colgroup = table && table.querySelector("colgroup");
+  if(!table || !colgroup) return;
+  var cols = {};
+  COL_KEYS.forEach(function(k){
+    cols[k] = colgroup.querySelector('col[data-col="' + k + '"]');
+  });
+
+  if(!colWidthsPct){
+    var ths = table.querySelectorAll("thead th");
+    var tableWidth = table.getBoundingClientRect().width || 1;
+    colWidthsPct = {};
+    COL_KEYS.forEach(function(k, i){
+      var th = ths[i];
+      colWidthsPct[k] = th ? (th.getBoundingClientRect().width / tableWidth * 100) : (100 / COL_KEYS.length);
+    });
+  }
+
+  function applyColWidths(){
+    COL_KEYS.forEach(function(k){
+      if(cols[k]) cols[k].style.width = colWidthsPct[k] + "%";
+    });
+  }
+  applyColWidths();
+
+  table.querySelectorAll(".col-resizer").forEach(function(handle){
+    var key = handle.dataset.col;
+    var idx = COL_KEYS.indexOf(key);
+    var nextKey = COL_KEYS[idx + 1];
+    if(!nextKey) return;
+
+    handle.addEventListener("mousedown", function(e){
+      e.preventDefault();
+      var startX = e.clientX;
+      var tableWidth = table.getBoundingClientRect().width || 1;
+      var startCur = colWidthsPct[key];
+      var startNext = colWidthsPct[nextKey];
+      handle.classList.add("dragging");
+      document.body.classList.add("col-resizing");
+
+      function onMove(ev){
+        var dxPct = (ev.clientX - startX) / tableWidth * 100;
+        var minCur = COL_MIN_PCT[key] || 4;
+        var minNext = COL_MIN_PCT[nextKey] || 4;
+        var newCur = startCur + dxPct;
+        var newNext = startNext - dxPct;
+        if(newCur < minCur){ newNext -= (minCur - newCur); newCur = minCur; }
+        if(newNext < minNext){ newCur -= (minNext - newNext); newNext = minNext; }
+        colWidthsPct[key] = newCur;
+        colWidthsPct[nextKey] = newNext;
+        applyColWidths();
+      }
+      function onUp(){
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        handle.classList.remove("dragging");
+        document.body.classList.remove("col-resizing");
+        saveState();
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
   });
 }
 
@@ -1364,8 +1509,10 @@ function initUI(info){
     });
   }
   bindTableEvents();
+  bindRowDrag();
   renderRows();
   renderSpecialHolidays();
+  initColumnResize();
 }
 if(typeof Office !== "undefined" && Office.onReady){
   Office.onReady(function(info){ initUI(info); });

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>工程表ツール</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<link rel="stylesheet" href="taskpane.css?v=20260916j">
+<link rel="stylesheet" href="taskpane.css?v=20260916k">
 </head>
 <body>
   <header>
@@ -75,6 +75,16 @@
     </section>
   </main>
 
-  <script src="taskpane.js?v=20260916j"></script>
+  <div id="confirmModal" class="confirm-overlay" hidden>
+    <div class="confirm-box">
+      <p id="confirmMessage" class="confirm-message"></p>
+      <div class="confirm-actions">
+        <button type="button" id="confirmCancelBtn" class="confirm-btn confirm-btn-cancel">Excel側を残す</button>
+        <button type="button" id="confirmOkBtn" class="confirm-btn confirm-btn-ok">上書きする</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="taskpane.js?v=20260916k"></script>
 </body>
 </html>

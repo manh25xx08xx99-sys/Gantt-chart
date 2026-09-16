@@ -453,6 +453,35 @@ function setStatus(msg, isError){
   el.style.color = isError ? "#c0392b" : "#2e7d32";
 }
 
+// ---- 確認モーダル（window.confirm()はOfficeアドインのタスクペインでサポートされないため、
+//      タスクペイン内に自前のオーバーレイを用意する） ----
+function showConfirm(message, okLabel, cancelLabel){
+  return new Promise(function(resolve){
+    var overlay = document.getElementById("confirmModal");
+    var msgEl = document.getElementById("confirmMessage");
+    var okBtn = document.getElementById("confirmOkBtn");
+    var cancelBtn = document.getElementById("confirmCancelBtn");
+    if(!overlay || !msgEl || !okBtn || !cancelBtn){
+      resolve(false); // モーダルが無ければ安全側（上書きしない）に倒す
+      return;
+    }
+    msgEl.textContent = message;
+    okBtn.textContent = okLabel || "上書きする";
+    cancelBtn.textContent = cancelLabel || "Excel側を残す";
+    overlay.hidden = false;
+    function cleanup(result){
+      overlay.hidden = true;
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+    function onOk(){ cleanup(true); }
+    function onCancel(){ cleanup(false); }
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
 // ---- 保存／復元（localStorageが使えない環境でも続行できるようにtry/catch） ----
 function saveState(){
   try{
@@ -960,6 +989,8 @@ function generateGantt(){
           // 作業は、どちらを信じるべきか自動判断できないので確認する：上書きする場合は
           // 総人工数で描き直し、しない場合はタスクペイン側の総人工数をExcelの実際の値に
           // 合わせておく（次に見たときに数字が食い違って混乱しないように）。
+          // window.confirm()はOfficeアドインのタスクペインではサポートされないため、
+          // タスクペイン内蔵の確認モーダル（showConfirm）を使う。
           var conflicts = [];
           L.rowsOut.forEach(function(r, i){
             var old = savedManpowerGrid && savedManpowerGrid[i];
@@ -969,55 +1000,58 @@ function generateGantt(){
               conflicts.push({ index: i, name: r.name || "(名称なし)", oldSum: oldSum, newTotal: total });
             }
           });
-          var overwrite = false;
+
+          var confirmPromise = Promise.resolve(false);
           if(conflicts.length > 0){
             var confirmMsg = "以下の作業は、Excel側に既に入力済みの人工数と、タスクペインの総人工数が食い違っています。\n\n" +
               conflicts.map(function(c){ return "・" + c.name + "：Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工"; }).join("\n") +
               "\n\nタスクペインの総人工数で上書きしますか？\n" +
-              "「OK」＝上書きする　／　「キャンセル」＝Excel側を残し、タスクペインの総人工数をExcel側の値に合わせます";
-            overwrite = (typeof window !== "undefined" && window.confirm) ? window.confirm(confirmMsg) : false;
+              "「上書きする」＝タスクペインの総人工数で描き直す　／　「Excel側を残す」＝Excel側の値を残し、タスクペインの総人工数をExcel側に合わせます";
+            confirmPromise = showConfirm(confirmMsg);
           }
 
-          var finalGrid = L.rowsOut.map(function(r, i){
-            var old = savedManpowerGrid && savedManpowerGrid[i];
-            var oldHasData = Array.isArray(old) && old.some(function(v){ return typeof v === "number" && v > 0; });
-            var total = parseInt(r.mpTotal, 10);
-            if(oldHasData && total > 0 && total !== (old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0))){
-              if(overwrite) return buildManpowerRowValues(r.cells, total, r.mpDist);
-              // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
-              var oldSum = old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0);
-              if(rows[i]) rows[i].mpTotal = String(oldSum);
-              return old;
+          return confirmPromise.then(function(overwrite){
+            var finalGrid = L.rowsOut.map(function(r, i){
+              var old = savedManpowerGrid && savedManpowerGrid[i];
+              var oldHasData = Array.isArray(old) && old.some(function(v){ return typeof v === "number" && v > 0; });
+              var total = parseInt(r.mpTotal, 10);
+              if(oldHasData && total > 0 && total !== (old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0))){
+                if(overwrite) return buildManpowerRowValues(r.cells, total, r.mpDist);
+                // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
+                var oldSum = old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0);
+                if(rows[i]) rows[i].mpTotal = String(oldSum);
+                return old;
+              }
+              if(oldHasData) return old;
+              if(total > 0) return buildManpowerRowValues(r.cells, total, r.mpDist);
+              return L.days.map(function(){ return ""; });
+            });
+            if(conflicts.length > 0 && !overwrite){
+              saveState();
+              renderRows();
             }
-            if(oldHasData) return old;
-            if(total > 0) return buildManpowerRowValues(r.cells, total, r.mpDist);
-            return L.days.map(function(){ return ""; });
-          });
-          if(conflicts.length > 0 && !overwrite){
-            saveState();
-            renderRows();
-          }
-          L.rowsOut.forEach(function(r, i){
-            var mpRow = L.taskTop + i * L.ROWS_PER_TASK + 1;
-            sheet.getRangeByIndexes(mpRow, 1, 1, L.days.length).values = [finalGrid[i]];
-          });
-          var dailyManpower = sumManpowerByDay(finalGrid, L.days.length);
-          var curve = buildCumulativeCurve(dailyManpower);
-          // 前回データも自動配分も無く、全て空だった場合は何もせず、
-          // 生成時の初期グラフ（作業日数ベース）を残す
-          if(curve.total <= 0) return ctx.sync();
-          return (L.showProgress
-            ? drawProgressLineChart(ctx, sheet, L, curve.cumulativePct, curve.dailyCount)
-            : Promise.resolve()
-          ).then(function(){
-            return drawManpowerChart(ctx, sheet, L, dailyManpower);
-          }).then(function(){
-            if(L.showProgress && curve.total > 0){
-              var perUnitPct = 100 / curve.total;
-              var infoText = "総人工数：" + curve.total + "人工　（1人工 ＝ 100％ ÷ " + curve.total + "人工 ＝ " + perUnitPct.toFixed(2) + "％）";
-              sheet.getRangeByIndexes(L.progressInfoTop, 0, 1, 1).values = [[infoText]];
-            }
-            return ctx.sync();
+            L.rowsOut.forEach(function(r, i){
+              var mpRow = L.taskTop + i * L.ROWS_PER_TASK + 1;
+              sheet.getRangeByIndexes(mpRow, 1, 1, L.days.length).values = [finalGrid[i]];
+            });
+            var dailyManpower = sumManpowerByDay(finalGrid, L.days.length);
+            var curve = buildCumulativeCurve(dailyManpower);
+            // 前回データも自動配分も無く、全て空だった場合は何もせず、
+            // 生成時の初期グラフ（作業日数ベース）を残す
+            if(curve.total <= 0) return ctx.sync();
+            return (L.showProgress
+              ? drawProgressLineChart(ctx, sheet, L, curve.cumulativePct, curve.dailyCount)
+              : Promise.resolve()
+            ).then(function(){
+              return drawManpowerChart(ctx, sheet, L, dailyManpower);
+            }).then(function(){
+              if(L.showProgress && curve.total > 0){
+                var perUnitPct = 100 / curve.total;
+                var infoText = "総人工数：" + curve.total + "人工　（1人工 ＝ 100％ ÷ " + curve.total + "人工 ＝ " + perUnitPct.toFixed(2) + "％）";
+                sheet.getRangeByIndexes(L.progressInfoTop, 0, 1, 1).values = [[infoText]];
+              }
+              return ctx.sync();
+            });
           });
         });
       });

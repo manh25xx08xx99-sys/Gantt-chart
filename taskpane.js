@@ -1807,7 +1807,7 @@ async function writeGanttSheet(ctx, model, sheet){
   legendRange.format.horizontalAlignment = "Left";
   if(legendTextRange){
     legendTextRange.format.wrapText = true;
-    legendTextRange.format.horizontalAlignment = "Center";
+    legendTextRange.format.horizontalAlignment = "Left";
     legendTextRange.format.verticalAlignment = "Center";
   }
   legendRange.format.borders.getItem("EdgeTop").style = "Continuous";

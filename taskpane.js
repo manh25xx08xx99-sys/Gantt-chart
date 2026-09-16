@@ -38,6 +38,37 @@ function formatDateInputValue(iso){
 function noonDate(y, m, day){ // m: 0-11。計算を安定させるため正午に固定する
   return new Date(y, m, day, 12, 0, 0, 0);
 }
+
+// ---- ガントチャートの表示期間 ----
+//   both       … 開始月の1日 ～ 終了月の月末
+//   endMonth   … 開始日 ～ 終了月の月末（既定）
+//   startMonth … 開始月の1日 ～ 終了日
+//   exact      … 開始日 ～ 終了日
+var DISPLAY_RANGES = ["both", "endMonth", "startMonth", "exact"];
+function normalizeDisplayRange(value, legacyFullStartMonth){
+  if(DISPLAY_RANGES.indexOf(value) >= 0) return value;
+  // 旧バージョンのチェックボックス「開始日の月を1日から表示する」の保存値から引き継ぐ
+  return legacyFullStartMonth ? "both" : "endMonth";
+}
+
+// 生成済みシートの見出し（年・月・日の行の先頭列）から、そのシートの表示開始日を読み取る
+function parseSheetStartDate(yearVal, monthVal, dayVal){
+  var y = parseInt(yearVal, 10), m = parseInt(monthVal, 10), d = parseInt(dayVal, 10);
+  if(!(y > 1900) || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return null;
+  var date = noonDate(y, m - 1, d);
+  return date.getDate() === d ? date : null;
+}
+
+// 旧シートの1行分（旧シートの表示開始日から数えた列順）を、新しい表示期間の列順に並べ直す。
+// offset＝新しい表示開始日が旧シートの開始日より何日後か（前なら負の値）
+function realignDayRow(oldRow, offset, newLen){
+  var out = new Array(newLen);
+  for(var k = 0; k < newLen; k++){
+    var v = oldRow ? oldRow[k + offset] : undefined;
+    out[k] = (v === undefined || v === null) ? "" : v;
+  }
+  return out;
+}
 function nthMondayOfMonth(year, month, nth){ // month: 1-12
   var d = noonDate(year, month - 1, 1);
   var count = 0;
@@ -171,13 +202,16 @@ function buildGanttModel(tasks, opts){
   var minT = Math.min.apply(null, dated.map(function(t){ return t.start.getTime(); }));
   var maxT = Math.max.apply(null, dated.map(function(t){ return t.end.getTime(); }));
   var minD = new Date(minT), maxD = new Date(maxT);
-  // 既定は最初の開始日から。fullStartMonthがtrueなら開始日の月の1日から表示する
-  // （工期が短いと表の列数が少なく、印刷したときに見栄えが悪くなるため）
-  var periodStart = opts.fullStartMonth
+  // 表示期間（displayRange）：開始側を「開始月の1日」まで、終了側を「終了月の月末」まで
+  // 広げるかをそれぞれ決める（工期が短いと列数が少なく、印刷したときに見栄えが悪くなるため）
+  var range = normalizeDisplayRange(opts.displayRange, opts.fullStartMonth);
+  var fromMonthStart = range === "both" || range === "startMonth";
+  var toMonthEnd = range === "both" || range === "endMonth";
+  var periodStart = fromMonthStart
     ? noonDate(minD.getFullYear(), minD.getMonth(), 1)
     : noonDate(minD.getFullYear(), minD.getMonth(), minD.getDate());
   var periodEndRaw = noonDate(maxD.getFullYear(), maxD.getMonth(), maxD.getDate());
-  var periodEnd = noonDate(maxD.getFullYear(), maxD.getMonth() + 1, 0); // 最大月の月末まで表示
+  var periodEnd = toMonthEnd ? noonDate(maxD.getFullYear(), maxD.getMonth() + 1, 0) : periodEndRaw;
 
   var days = [];
   for(var d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)){
@@ -447,7 +481,7 @@ var workOnSaturday = true;
 var specialHolidays = []; // 特別休業日 ["YYYY-MM-DD", ...]（日曜・祝日と同じ休み扱い）
 var showProgressChart = false; // 進捗率グラフ（出来高累計％の折れ線）も出力するか
 var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力行を追加）を使うか
-var fullStartMonth = false; // 開始日の月を1日から表示するか（短い工期でも表の幅を確保する）
+var displayRange = "endMonth"; // ガントチャートの表示期間（DISPLAY_RANGESのいずれか）
 
 // ---- 入力表の列幅（ドラッグした列だけ幅が変わり、他の列はそのまま。備考(note)列が残り幅を
 //      自動で吸収する。%指定＋table width:100%なので、パネル幅を超えることはブラウザの
@@ -529,7 +563,7 @@ function saveState(){
   var payload = {
     rows: rows, nextId: nextId, workOnSaturday: workOnSaturday,
     specialHolidays: specialHolidays, showProgressChart: showProgressChart,
-    manpowerMode: manpowerMode, fullStartMonth: fullStartMonth, colWidthsPct: colWidthsPct
+    manpowerMode: manpowerMode, displayRange: displayRange, colWidthsPct: colWidthsPct
   };
   var settings = docSettings();
   if(settings){
@@ -565,7 +599,7 @@ function loadState(){
   specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
   showProgressChart = !!saved.showProgressChart;
   manpowerMode = !!saved.manpowerMode;
-  fullStartMonth = !!saved.fullStartMonth;
+  displayRange = normalizeDisplayRange(saved.displayRange, saved.fullStartMonth);
   if(saved.colWidthsPct && isValidColWidthsPct(saved.colWidthsPct)){
     colWidthsPct = saved.colWidthsPct;
   }
@@ -718,16 +752,19 @@ var MP_TOTAL_TITLE = "この作業の総人工数（人日）。Excel側がま�
 // ---- Excelとタスクペインが食い違ったときは常に「どちらに合わせるか」を聞く。
 //      ただし「Excelに合わせる」と決めた状態がそのまま続いている間は聞き直さないよう、
 //      その決定（Excelの中身・総人工数・配分方法・稼働日の並び）を行ごとに覚えておく ----
-function mpRowSignature(row, dayCount){
+// 署名は列の位置ではなく日付で作る（表示期間を変えて列がずれても同じ内容なら同じ署名になる）
+function mpRowSignature(row, days){
   var parts = [];
-  for(var i = 0; i < dayCount; i++){
+  for(var i = 0; i < days.length; i++){
     var v = parseFloat(row && row[i]);
-    parts.push(isFinite(v) && v > 0 ? v : 0);
+    if(isFinite(v) && v > 0) parts.push(toISODate(days[i]) + "=" + v);
   }
   return parts.join(",");
 }
-function mpCellsSignature(cells){
-  return cells.map(function(c){ return c ? 1 : 0; }).join("");
+function mpCellsSignature(cells, days){
+  var parts = [];
+  cells.forEach(function(c, i){ if(c) parts.push(toISODate(days[i])); });
+  return parts.join(",");
 }
 // 前回「Excelに合わせる」と決めたときから何も変わっていないか
 // （Excelの中身・総人工数・配分方法・工程のどれか1つでも変われば、また聞く）
@@ -1041,7 +1078,7 @@ function generateGantt(){
       mpDist: r.mpDist,
     };
   });
-  var model = buildGanttModel(tasks, { workOnSaturday: workOnSaturday, specialHolidayDates: specialHolidays, fullStartMonth: fullStartMonth });
+  var model = buildGanttModel(tasks, { workOnSaturday: workOnSaturday, specialHolidayDates: specialHolidays, displayRange: displayRange });
   if(!model){
     setStatus("開始日・終了日が両方入った作業がありません。", true);
     return;
@@ -1070,12 +1107,25 @@ function generateGantt(){
         oldSheet.delete();
         return;
       }
-      var blockRange = oldSheet.getRangeByIndexes(L.taskTop, 1, L.rowsOut.length * L.ROWS_PER_TASK, L.days.length);
-      blockRange.load("values");
+      // 表示期間の設定を変えると、旧シートと今回とで先頭の日付や日数が違うことがある。
+      // 列の位置ではなく日付で対応させるため、旧シートの表示開始日（年・月・日の見出し）と
+      // 使用範囲の幅も読み、人工数を今回の列順に並べ直す
+      var used = oldSheet.getUsedRange();
+      used.load("columnIndex,columnCount");
+      var head = oldSheet.getRangeByIndexes(L.headerTop, 1, 3, 1);
+      head.load("values");
+      var blockRange = null;
       return ctx.sync().then(function(){
+        var oldWidth = Math.max(L.days.length, used.columnIndex + used.columnCount - 1);
+        blockRange = oldSheet.getRangeByIndexes(L.taskTop, 1, L.rowsOut.length * L.ROWS_PER_TASK, oldWidth);
+        blockRange.load("values");
+        return ctx.sync();
+      }).then(function(){
+        var oldStart = parseSheetStartDate(head.values[0][0], head.values[1][0], head.values[2][0]);
+        var offset = oldStart ? Math.round((L.days[0].getTime() - oldStart.getTime()) / 86400000) : 0;
         var grid = [];
         for(var i = 0; i < L.rowsOut.length; i++){
-          grid.push(blockRange.values[i * L.ROWS_PER_TASK + 1]);
+          grid.push(realignDayRow(blockRange.values[i * L.ROWS_PER_TASK + 1], offset, L.days.length));
         }
         savedManpowerGrid = grid;
       }).catch(function(){
@@ -1102,7 +1152,7 @@ function generateGantt(){
       var expected = buildManpowerRowValues(r.cells, total, r.mpDist);
       if(sameManpowerValues(old, expected, L.days.length)) return; // 既に同じ内容なら何も聞かない
       // 前回「Excelに合わせる」と決めた状態がそのまま続いているなら聞き直さない
-      if(mpDecisionStillValid(i, mpRowSignature(old, L.days.length), mpCellsSignature(r.cells), total, r.mpDist)) return;
+      if(mpDecisionStillValid(i, mpRowSignature(old, L.days), mpCellsSignature(r.cells, L.days), total, r.mpDist)) return;
       hasConflict = true;
     });
     if(!hasConflict) return false;
@@ -1159,8 +1209,8 @@ function generateGantt(){
               clearMpAccepted(i);
               return old;
             }
-            var rowSig = mpRowSignature(old, L.days.length);
-            var cellsSig = mpCellsSignature(r.cells);
+            var rowSig = mpRowSignature(old, L.days);
+            var cellsSig = mpCellsSignature(r.cells, L.days);
             // 前回「Excelに合わせる」と決めた状態のままなら、聞かずにその決定を尊重する
             if(mpDecisionStillValid(i, rowSig, cellsSig, total, r.mpDist)) return old;
             // ここは上のモーダルで確認済みの不一致
@@ -1859,11 +1909,11 @@ function initUI(info){
       renderRows();
     });
   }
-  var monthCheck = document.getElementById("fullStartMonthCheck");
-  if(monthCheck){
-    monthCheck.checked = fullStartMonth;
-    monthCheck.addEventListener("change", function(e){
-      fullStartMonth = e.target.checked;
+  var rangeSelect = document.getElementById("displayRangeSelect");
+  if(rangeSelect){
+    rangeSelect.value = displayRange;
+    rangeSelect.addEventListener("change", function(e){
+      displayRange = normalizeDisplayRange(e.target.value);
       saveState();
     });
   }
@@ -1937,6 +1987,11 @@ if(typeof module !== "undefined" && module.exports){
     normColor: normColor,
     contrastTextColor: contrastTextColor,
     buildGanttModel: buildGanttModel,
+    normalizeDisplayRange: normalizeDisplayRange,
+    parseSheetStartDate: parseSheetStartDate,
+    realignDayRow: realignDayRow,
+    mpRowSignature: mpRowSignature,
+    mpCellsSignature: mpCellsSignature,
     buildProgressCurve: buildProgressCurve,
     buildCumulativeCurve: buildCumulativeCurve,
     sumManpowerByDay: sumManpowerByDay,

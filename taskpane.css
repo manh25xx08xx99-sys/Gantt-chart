@@ -29,6 +29,15 @@ main{padding:10px 10px 14px;}
   background:var(--head-fill);border-radius:6px;padding:8px 10px;margin:0 0 10px;
 }
 .sat-check input{margin-top:2px;}
+.range-field{
+  display:block;line-height:1.5;
+  background:var(--head-fill);border-radius:6px;padding:8px 10px;margin:0 0 10px;
+}
+.range-field-label{display:block;margin-bottom:4px;}
+.range-field select{
+  display:block;width:100%;max-width:100%;font:inherit;font-size:11px;padding:3px 4px;
+  border:1px solid var(--line);border-radius:4px;background:#fff;color:inherit;cursor:pointer;
+}
 .special-holiday{
   margin:-3px 0 10px;
   padding:7px 8px;

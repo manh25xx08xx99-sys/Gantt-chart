@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>工程表ツール</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<link rel="stylesheet" href="taskpane.css?v=20260916u">
+<link rel="stylesheet" href="taskpane.css?v=20260916v">
 </head>
 <body>
   <header>
@@ -18,9 +18,14 @@
       <input type="checkbox" id="satCheck" checked>
       土曜日も稼働する（チェックを外すと、土曜日はすべて休み扱いになり色が付きません）
     </label>
-    <label class="sat-check">
-      <input type="checkbox" id="fullStartMonthCheck">
-      開始日の月を1日から表示する（工期が短いときに表の幅を確保します。終了日側は常に月末まで表示）
+    <label class="range-field">
+      <span class="range-field-label">日付の表示期間</span>
+      <select id="displayRangeSelect">
+        <option value="both">開始月・終了月とも月全体（1日～月末）</option>
+        <option value="endMonth">終了月のみ月全体（開始日～月末）</option>
+        <option value="startMonth">開始月のみ月全体（1日～終了日）</option>
+        <option value="exact">開始日～終了日のみ</option>
+      </select>
     </label>
     <label class="sat-check">
       <input type="checkbox" id="progressChartCheck">
@@ -89,6 +94,6 @@
     </div>
   </div>
 
-  <script src="taskpane.js?v=20260916u"></script>
+  <script src="taskpane.js?v=20260916v"></script>
 </body>
 </html>

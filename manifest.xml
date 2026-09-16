@@ -7,10 +7,10 @@
   xsi:type="TaskPaneApp">
 
   <Id>dfc3fd23-ff19-4d33-b312-a15d117dd27d</Id>
-  <Version>1.0.0.1</Version>
+  <Version>1.0.0.2</Version>
   <ProviderName>施工計画書ツール</ProviderName>
   <DefaultLocale>ja-JP</DefaultLocale>
-  <DisplayName DefaultValue="工程表ツール（5.工程表）" />
+  <DisplayName DefaultValue="工程表作成" />
   <Description DefaultValue="石綿除去工事の工程表（ガントチャート）を、日本の祝日を考慮してExcelシートに直接生成します。" />
   <IconUrl DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-32.png?v=2" />
   <HighResolutionIconUrl DefaultValue="https://manh25xx08xx99-sys.github.io/Gantt-chart/assets/icon-64.png?v=2" />

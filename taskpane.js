@@ -1311,6 +1311,10 @@ async function drawProgressLineChart(ctx, sheet, L, pctArr, dailyCount){
     valAxis.minorGridlines.visible = false;
 
     var progSeries = progChart.series.getItemAt(0);
+    // 先頭セルが数値の0なので自動判定でも範囲全体が系列になるが、
+    // 念のため日数+1行ぴったりを明示しておく（末尾の空白セルは系列に残るため、
+    // 「プロットしない」で稼働最終日に線が止まる動きはそのまま）
+    progSeries.setValues(dataRange);
     progSeries.name = "累計進捗率";
     progSeries.smooth = false;
     progSeries.markerStyle = Excel.ChartMarkerStyle.none;
@@ -1388,7 +1392,12 @@ async function drawManpowerChart(ctx, sheet, L, dailyManpower){
     var helperCol = nCols + 4; // 進捗率グラフの隠し列(nCols+2)と重ならないよう間隔をあける
     var dataRange = sheet.getRangeByIndexes(L.manpowerChartTop, helperCol, days.length, 1);
     dataRange.clear(Excel.ClearApplyTo.contents);
-    dataRange.values = dailyManpower.map(function(v){ return [v > 0 ? v : ""]; });
+    // 人数が0の日も空白ではなく数値の0を書き込む。先頭が空白のままだと、
+    // Excelがその空白部分を「カテゴリ名の列」と判定してしまい、棒が残りの日数分
+    // しか作られずに横へ引き伸ばされて日付とずれる（「開始日の月を1日から表示する」
+    // で先頭に非稼働日が並ぶと発生）。表示形式"0;;;"で0のラベルだけ隠す
+    dataRange.values = dailyManpower.map(function(v){ return [v > 0 ? v : 0]; });
+    dataRange.numberFormat = dailyManpower.map(function(){ return ["0;;;"]; });
     // 一部の行だけでなく列全体を指定して確実に非表示にする
     dataRange.getEntireColumn().columnHidden = true;
 
@@ -1425,12 +1434,17 @@ async function drawManpowerChart(ctx, sheet, L, dailyManpower){
     valAxis.majorTickMark = Excel.ChartAxisTickMark.none;
 
     var mpSeries = mpChart.series.getItemAt(0);
+    // charts.addは選択範囲から自動でデータ範囲を判定するため、空白セルの位置に
+    // よってカテゴリ数が日数と合わなくなることがある。棒が日付とずれないよう、
+    // 系列の値範囲を日数分ちょうどに明示的に指定し直す
+    mpSeries.setValues(dataRange);
     mpSeries.name = "労務者数";
     mpSeries.format.fill.setSolidColor("#43a047");
     mpSeries.hasDataLabels = true;
     var mpLabels = mpSeries.dataLabels;
     mpLabels.position = Excel.ChartDataLabelPosition.outsideEnd;
     mpLabels.format.font.size = 7;
+    mpLabels.numberFormat = "0;;;"; // 0の日はラベルを出さない（元データの表示形式と同じ）
 
     // 軸の非表示を確定させてから余白を計算させるため、一度syncしてから
     // プロットエリアをチャート全体にぴったり合わせる

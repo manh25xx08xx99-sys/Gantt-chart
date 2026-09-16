@@ -332,6 +332,28 @@ function buildManpowerRowValues(cells, total, mode){
   return out;
 }
 
+// 人工数行のうち、数値が入っている日のインデックス一覧（空欄・0・文字列は無視）
+function filledManpowerIndexes(row, dayCount){
+  var out = [];
+  if(!row) return out;
+  for(var i = 0; i < dayCount; i++){
+    var v = parseFloat(row[i]);
+    if(isFinite(v) && v > 0) out.push(i);
+  }
+  return out;
+}
+
+// 2つの人工数行で「数値が入っている日の並び」が同じか。
+// Excel側の既存データが、今の稼働日（休日追加などで変わった工程）と噛み合っているかの判定に使う。
+// 同じ位置に入っていれば手修正（値だけの違い）、位置がずれていれば工程自体が変わったと判断できる
+function sameManpowerLayout(rowA, rowB, dayCount){
+  var a = filledManpowerIndexes(rowA, dayCount);
+  var b = filledManpowerIndexes(rowB, dayCount);
+  if(a.length !== b.length) return false;
+  for(var i = 0; i < a.length; i++) if(a[i] !== b[i]) return false;
+  return true;
+}
+
 // 労務者数グラフの目盛り間隔（majorUnit）を、その日の最大人数に応じて決める。
 // 最大値が10未満なら2刻み、10以上20未満なら4刻み、20以上40未満なら8刻み…と
 // 上限が10→20→40→80…と倍になるたびに、刻み幅も2→4→8→16…と倍になる
@@ -997,15 +1019,28 @@ function generateGantt(){
       var old = savedManpowerGrid && savedManpowerGrid[i];
       var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
       var total = parseInt(r.mpTotal, 10);
-      if(oldSum > 0 && total > 0 && oldSum !== total){
-        conflicts.push({ index: i, name: r.name || "(名称なし)", oldSum: oldSum, newTotal: total });
+      if(!(oldSum > 0) || !(total > 0)) return;
+      if(oldSum !== total){
+        // 総人工数そのものが食い違っている
+        conflicts.push({ index: i, name: r.name || "(名称なし)", reason: "sum", oldSum: oldSum, newTotal: total });
+        return;
+      }
+      // 合計は同じでも、休日追加などで工程（稼働日）が変わっていると、Excel側の
+      // 配分は今の稼働日と噛み合わなくなる（延びた日が空欄のまま＝グラフもそこで止まる）
+      var expected = buildManpowerRowValues(r.cells, total, r.mpDist);
+      if(!sameManpowerLayout(old, expected, L.days.length)){
+        conflicts.push({ index: i, name: r.name || "(名称なし)", reason: "layout", oldSum: oldSum, newTotal: total });
       }
     });
     if(conflicts.length === 0) return false;
-    var confirmMsg = "以下の作業は、Excel側に既に入力済みの人工数と、タスクペインの総人工数が食い違っています。\n\n" +
-      conflicts.map(function(c){ return "・" + c.name + "：Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工"; }).join("\n") +
-      "\n\nタスクペインの総人工数で上書きしますか？\n" +
-      "「上書きする」＝タスクペインの総人工数で描き直す　／　「Excel側を残す」＝Excel側の値を残し、タスクペインの総人工数をExcel側に合わせます";
+    var confirmMsg = "以下の作業は、Excel側の人工数とタスクペインの設定が一致していません。\n\n" +
+      conflicts.map(function(c){
+        return c.reason === "sum"
+          ? "・" + c.name + "：総人工数が違います（Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工）"
+          : "・" + c.name + "：配分が今の稼働日と合っていません（休日追加などで工程が変わった可能性）";
+      }).join("\n") +
+      "\n\nタスクペインの設定で配分し直しますか？\n" +
+      "「上書きする」＝今の稼働日に合わせて配分し直す　／　「Excel側を残す」＝Excel側の値をそのまま残します";
     return showConfirm(confirmMsg);
   }).then(function(overwrite){
     // (3) シートを改めて開き、なければ新規作成、あれば再利用して中身を全消去する。
@@ -1041,14 +1076,18 @@ function generateGantt(){
             var oldHasData = Array.isArray(old) && old.some(function(v){ return typeof v === "number" && v > 0; });
             var total = parseInt(r.mpTotal, 10);
             var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
-            if(oldHasData && total > 0 && total !== oldSum){
-              if(overwrite) return buildManpowerRowValues(r.cells, total, r.mpDist);
+            var expected = total > 0 ? buildManpowerRowValues(r.cells, total, r.mpDist) : null;
+            // 競合（合計の不一致、または配分が今の稼働日と噛み合っていない）は上で確認済み
+            var mismatch = oldHasData && expected &&
+              (total !== oldSum || !sameManpowerLayout(old, expected, L.days.length));
+            if(mismatch){
+              if(overwrite) return expected;
               // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
               if(rows[i]) rows[i].mpTotal = String(oldSum);
               return old;
             }
             if(oldHasData) return old;
-            if(total > 0) return buildManpowerRowValues(r.cells, total, r.mpDist);
+            if(expected) return expected;
             return L.days.map(function(){ return ""; });
           });
           saveState();
@@ -1792,6 +1831,8 @@ if(typeof module !== "undefined" && module.exports){
     sumManpowerByDay: sumManpowerByDay,
     distributeManpower: distributeManpower,
     buildManpowerRowValues: buildManpowerRowValues,
+    filledManpowerIndexes: filledManpowerIndexes,
+    sameManpowerLayout: sameManpowerLayout,
     computeManpowerMajorUnit: computeManpowerMajorUnit,
     computeLayout: computeLayout,
     boolToRuns: boolToRuns,

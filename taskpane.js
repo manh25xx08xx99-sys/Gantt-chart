@@ -299,7 +299,13 @@ function distributeManpower(total, numDays, mode){
       return a;
     });
     var leftover = remaining - added;
-    for(var k = 0; k < leftover; k++) adds[activeDays - 1 - k] += 1;
+    // 端数の置き場所は傾向を強める方向にする：増加なら末尾（最大値側）、
+    // 減少なら先頭（最大値側）。減少なのに末尾に足すと、末尾が逆に最大になってしまう
+    if(mode === "increasing"){
+      for(var k = 0; k < leftover; k++) adds[activeDays - 1 - k] += 1;
+    } else {
+      for(var k = 0; k < leftover; k++) adds[k] += 1;
+    }
     for(var j = 0; j < activeDays; j++) base[j] += adds[j];
   } else {
     var extra = Math.floor(remaining / activeDays);

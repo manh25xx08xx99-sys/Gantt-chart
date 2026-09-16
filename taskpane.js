@@ -501,29 +501,69 @@ function showConfirm(message, okLabel, cancelLabel){
   });
 }
 
-// ---- 保存／復元（localStorageが使えない環境でも続行できるようにtry/catch） ----
-function saveState(){
+// ---- 保存／復元 ----
+// 入力内容はブック（Excelファイル）自体に保存する（Office.context.document.settingsは
+// 「アドインごと・ドキュメントごと」に保存される）。そのため、別のブックを開いたときは
+// 何も入っていない状態＝入力画面がまっさらな状態で始まり、同じブックを開き直したときは
+// 前回の入力がそのまま復元される。
+// ※Excel外（ブラウザでの動作確認など）ではsettingsが無いのでlocalStorageを使う。
+//   Excel内ではlocalStorageへはフォールバックしない（他のブックの内容が出てきてしまうため）
+var STORE_KEY = "m5ganttRows";
+var docSettingsSaveTimer = null;
+
+function docSettings(){
   try{
-    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode, colWidthsPct: colWidthsPct }));
-  }catch(err){}
-}
-function loadState(){
-  try{
-    var saved = JSON.parse(localStorage.getItem("m5ganttRows") || "null");
-    if(saved && Array.isArray(saved.rows)){
-      rows = saved.rows;
-      nextId = saved.nextId || (rows.length + 1);
-      workOnSaturday = saved.workOnSaturday !== false;
-      specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
-      showProgressChart = !!saved.showProgressChart;
-      manpowerMode = !!saved.manpowerMode;
-      if(saved.colWidthsPct && isValidColWidthsPct(saved.colWidthsPct)){
-        colWidthsPct = saved.colWidthsPct;
-      }
-      return true;
+    if(typeof Office !== "undefined" && Office.context && Office.context.document && Office.context.document.settings){
+      return Office.context.document.settings;
     }
   }catch(err){}
-  return false;
+  return null;
+}
+
+function saveState(){
+  var payload = {
+    rows: rows, nextId: nextId, workOnSaturday: workOnSaturday,
+    specialHolidays: specialHolidays, showProgressChart: showProgressChart,
+    manpowerMode: manpowerMode, colWidthsPct: colWidthsPct
+  };
+  var settings = docSettings();
+  if(settings){
+    try{
+      settings.set(STORE_KEY, payload); // set()はメモリ上だけ
+      // 入力のたびに呼ばれるので、ブックへの書き込み(saveAsync)はまとめて行う
+      if(docSettingsSaveTimer) clearTimeout(docSettingsSaveTimer);
+      docSettingsSaveTimer = setTimeout(function(){
+        docSettingsSaveTimer = null;
+        try{ settings.saveAsync(function(){}); }catch(err){}
+      }, 400);
+    }catch(err){}
+    return;
+  }
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(payload)); }catch(err){}
+}
+
+function loadState(){
+  var saved = null;
+  var settings = docSettings();
+  try{
+    if(settings){
+      saved = settings.get(STORE_KEY);
+      if(typeof saved === "string") saved = JSON.parse(saved);
+    }else{
+      saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    }
+  }catch(err){ saved = null; }
+  if(!saved || !Array.isArray(saved.rows)) return false;
+  rows = saved.rows;
+  nextId = saved.nextId || (rows.length + 1);
+  workOnSaturday = saved.workOnSaturday !== false;
+  specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
+  showProgressChart = !!saved.showProgressChart;
+  manpowerMode = !!saved.manpowerMode;
+  if(saved.colWidthsPct && isValidColWidthsPct(saved.colWidthsPct)){
+    colWidthsPct = saved.colWidthsPct;
+  }
+  return true;
 }
 
 // ---- 特別休業日（追加した日は日曜・祝日と同じ「休み」扱いになる） ----

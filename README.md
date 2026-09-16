@@ -11,9 +11,9 @@ Z1.html: 18/18 ngày lễ 2026, gồm 振替休日・国民の休日).
 m5-gantt-addin/
 ├── manifest.xml       ← manifest của add-in (trỏ tới GitHub Pages, sideload qua registry)
 ├── taskpane.html/.js/.css ← panel điều khiển + logic (host trên GitHub Pages)
-├── install.bat         ← cài đặt 1-click (không cần Node.js) — chỉ cần file này + manifest.xml
-├── uninstall.bat        ← gỡ add-in (không cần Node.js)
-├── install.cjs / uninstall.cjs ← bản Node.js tương đương (tùy chọn)
+├── install.bat         ← cài đặt 1-click (không cần Node.js) + bật tự động cập nhật
+├── uninstall.bat        ← gỡ add-in + xoá tác vụ tự động cập nhật
+├── auto-update.ps1      ← tải manifest.xml mới nhất từ GitHub (install.bat tự gọi/tự tải)
 ├── server.js, start-server.bat ← chỉ dùng khi PHÁT TRIỂN cục bộ (xem mục cuối)
 └── assets/            ← icon
 ```
@@ -27,32 +27,43 @@ Toàn bộ taskpane (html/js/css/icon) được host tĩnh trên **GitHub Pages*
 [manh25xx08xx99-sys/Gantt-chart](https://github.com/manh25xx08xx99-sys/Gantt-chart),
 nhánh `main`, thư mục gốc. `manifest.xml` đã trỏ sẵn tới URL này.
 
-**Cập nhật tự động:** mỗi khi push code mới lên nhánh `main`, GitHub Pages tự
-build lại (thường trong ~1 phút). Máy nào đã sideload `manifest.xml` sẽ tự lấy
-bản mới nhất ở lần mở task pane tiếp theo — **không cần cài lại, không cần
-đồng nghiệp làm gì thêm.**
+**Cập nhật tự động — 2 tầng:**
+
+| Phần | Cách cập nhật |
+|---|---|
+| `taskpane.html/.js/.css`, icon | Excel tải qua mạng mỗi lần mở task pane → push lên `main`, đợi GitHub Pages build (~1 phút), đóng/mở lại task pane là có bản mới |
+| `manifest.xml` (file **cục bộ** trên từng máy) | Tác vụ Windows `GanttAddin_AutoUpdateManifest` do `install.bat` tạo: chạy **mỗi ngày 9:00 + mỗi lần đăng nhập Windows**, tải `manifest.xml` mới nhất từ GitHub và đăng ký lại registry |
+
+Nhờ đó máy đồng nghiệp **không cần làm gì thêm** khi có bản mới — kể cả khi
+`manifest.xml` thay đổi (đổi icon, đổi tên add-in, thêm nút ribbon...).
+Tác vụ này chỉ ghi đè `manifest.xml` khi nội dung thật sự khác, và chỉ nhận file
+có đúng `<Id>` của add-in (tránh ghi đè bằng file lỗi/file lạ).
 
 ## Cài đặt (máy mình hoặc máy đồng nghiệp)
 
 Không cần Node.js, không cần chạy server — taskpane đã host sẵn trên GitHub
 Pages, máy chỉ cần đăng ký 1 dòng registry trỏ vào `manifest.xml`.
 
-**Gửi cho đồng nghiệp: chỉ cần 2 file, để chung 1 thư mục:**
-- `manifest.xml`
-- `install.bat`
+**Gửi cho đồng nghiệp: chỉ cần `install.bat`** (để ở thư mục nào cũng được, miễn
+là thư mục cố định — không xoá/di chuyển sau khi cài).
 
 Cách cài:
 
-1. Copy 2 file trên (email, USB, chia sẻ file...) vào 1 thư mục bất kỳ trên máy
-   cần cài — vị trí không quan trọng, miễn 2 file nằm **cùng chỗ**.
-2. Double-click **`install.bat`** — tự đăng ký add-in vào Excel (chỉ ảnh hưởng
-   user hiện tại trên máy đó, không cần quyền admin, không cần cài gì thêm).
+1. Copy `install.bat` vào 1 thư mục cố định trên máy cần cài.
+2. Double-click **`install.bat`**. Nó sẽ tự:
+   - tải `auto-update.ps1` + `manifest.xml` mới nhất từ GitHub vào cùng thư mục,
+   - đăng ký add-in vào Excel (chỉ user hiện tại, không cần quyền admin),
+   - tạo tác vụ tự động cập nhật `manifest.xml` mỗi ngày.
 3. Mở Excel → tab **Home** → nút **工程表ツール** (nhóm 施工計画書) → task pane mở ra.
 
-Muốn gỡ: double-click **`uninstall.bat`** (cùng thư mục, cũng không cần Node.js).
+> Nếu máy đó **không có mạng** lúc cài, hãy gửi kèm cả `manifest.xml` để cùng thư
+> mục — install.bat sẽ đăng ký bằng file có sẵn (nhưng khi đó không bật được tự
+> động cập nhật).
 
-> Có Node.js thì cũng có thể dùng `node install.cjs` / `node uninstall.cjs`
-> (làm y hệt install.bat/uninstall.bat) — hoặc đăng ký thủ công qua PowerShell:
+Muốn gỡ: double-click **`uninstall.bat`** — xoá cả đăng ký add-in và tác vụ tự
+động cập nhật.
+
+> Đăng ký thủ công qua PowerShell (nếu cần):
 > ```powershell
 > New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Wef\Developer' `
 >   -Name 'dfc3fd23-ff19-4d33-b312-a15d117dd27d' `
@@ -60,11 +71,16 @@ Muốn gỡ: double-click **`uninstall.bat`** (cùng thư mục, cũng không c�
 > ```
 > (Đừng dùng `reg add` trong Git Bash — nó bị biến các switch `/v /t /d /f`
 > thành đường dẫn.)
+>
+> Kiểm tra / chạy tay tác vụ tự động cập nhật:
+> ```powershell
+> Get-ScheduledTask -TaskName 'GanttAddin_AutoUpdateManifest'
+> powershell -ExecutionPolicy Bypass -File '<thư mục cài>\auto-update.ps1'
+> ```
 
 ⚠ Đây vẫn là add-in **sideload kiểu dev** (không qua Store/M365 admin), nên mỗi
-máy cần tự đăng ký 1 lần như trên; khác với trước là **không cần chạy server**
-và **cập nhật code thì tự động** (nhờ GitHub Pages) — không cần cài lại khi có
-bản mới.
+máy cần chạy `install.bat` 1 lần. Sau đó thì không cần cài lại nữa: code chạy
+từ GitHub Pages, còn `manifest.xml` được tác vụ hằng ngày tự cập nhật.
 
 ## Cách dùng
 
@@ -94,7 +110,7 @@ bản mới.
 
 ## Gỡ add-in
 
-Chạy `node uninstall.cjs` trong thư mục này (xóa đăng ký registry), rồi khởi
+Chạy `uninstall.bat` (xoá đăng ký registry + tác vụ tự động cập nhật), rồi khởi
 động lại Excel. Muốn dùng lại: chạy `install.bat` (hoặc lệnh đăng ký PowerShell
 ở phần trên).
 
@@ -121,6 +137,8 @@ Khi cần sửa và xem trước TRƯỚC KHI push lên GitHub:
 | Không tìm thấy add-in / nút 工程表ツール | Chưa khởi động lại Excel hoàn toàn sau khi sideload; hoặc registry value bị xóa → chạy lại `install.bat` hoặc lệnh đăng ký PowerShell ở trên |
 | Sửa code xong nhưng Excel vẫn hiện bản cũ | Chờ GitHub Pages build xong (~1-2 phút, xem tab **Actions** trên GitHub), rồi đóng hẳn task pane và mở lại (không chỉ ẩn/hiện) |
 | `reg add` báo Invalid syntax | Đang chạy trong Git Bash (switch `/v` bị hiểu là đường dẫn) → dùng PowerShell như ở trên |
+| `manifest.xml` không tự cập nhật | Kiểm tra tác vụ còn không: `Get-ScheduledTask -TaskName 'GanttAddin_AutoUpdateManifest'`. Nếu đã xoá/di chuyển thư mục cài thì chạy lại `install.bat`. Chạy tay để xem lỗi: `powershell -ExecutionPolicy Bypass -File '<thư mục cài>\auto-update.ps1'` |
+| Dữ liệu đã điền trong task pane bị mất | Dữ liệu được lưu **trong chính file Excel** (Office document settings) → phải **lưu file Excel (Ctrl+S)** trước khi đóng. Mở file Excel khác thì task pane trắng là đúng thiết kế |
 
 ## Mức độ đã kiểm chứng
 

@@ -54,6 +54,7 @@ main{padding:10px 10px 14px;}
 .holiday-empty{font-size:10.5px;color:#777;}
 .sched-wrap{overflow-x:hidden;max-width:100%;}
 table.sched{
+  width:100%;
   border-collapse:collapse;
   table-layout:fixed;
   background:#fff;

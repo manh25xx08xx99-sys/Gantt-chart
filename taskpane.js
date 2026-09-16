@@ -366,13 +366,24 @@ var specialHolidays = []; // 特別休業日 ["YYYY-MM-DD", ...]（日曜・祝�
 var showProgressChart = false; // 進捗率グラフ（出来高累計％の折れ線）も出力するか
 var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力行を追加）を使うか
 
-// ---- 入力表の列幅（ドラッグした列だけ幅が変わり、他の列はそのまま。ただし備考(note)列が
-//      残り幅を自動で吸収するので、パネル幅を超えて画面からはみ出すことはない） ----
+// ---- 入力表の列幅（ドラッグした列だけ幅が変わり、他の列はそのまま。備考(note)列が残り幅を
+//      自動で吸収する。%指定＋table width:100%なので、パネル幅を超えることはブラウザの
+//      レイアウト計算上そもそも起こりえない（JS側で合計を手計算して補正する必要がない）） ----
 var COL_KEYS = ["name", "start", "end", "days", "note", "color", "del"];
 var RESIZABLE_KEYS = ["name", "start", "end", "days", "color"]; // note=残り幅を吸収, del=固定
 var COL_MIN_PX = { name: 40, start: 34, end: 34, days: 24, note: 55, color: 45, del: 20 };
 var DEFAULT_COL_PCT = { name: 15, start: 13, end: 13, days: 8, note: 26, color: 19, del: 6 };
-var colWidthsPx = null; // 未設定ならパネル幅からデフォルト比率で計算する
+var colWidthsPct = null; // 未設定ならデフォルト比率を使う（%単位、noteは常に残りとして再計算）
+
+// 保存されていた列幅%が壊れていないか確認する（合計が大きく崩れていると、列が
+// ほぼ0%に押し潰されて見えなくなるため、その場合はデフォルトに戻す）
+function isValidColWidthsPct(v){
+  var keys = RESIZABLE_KEYS.concat(["del"]);
+  if(!keys.every(function(k){ return typeof v[k] === "number" && isFinite(v[k]) && v[k] > 0; })) return false;
+  var sum = 0;
+  keys.forEach(function(k){ sum += v[k]; });
+  return sum > 0 && sum <= 95; // note用に最低5%は残っていること
+}
 
 function setStatus(msg, isError){
   var el = document.getElementById("status");
@@ -384,7 +395,7 @@ function setStatus(msg, isError){
 // ---- 保存／復元（localStorageが使えない環境でも続行できるようにtry/catch） ----
 function saveState(){
   try{
-    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode, colWidthsPx: colWidthsPx }));
+    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode, colWidthsPct: colWidthsPct }));
   }catch(err){}
 }
 function loadState(){
@@ -397,8 +408,8 @@ function loadState(){
       specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
       showProgressChart = !!saved.showProgressChart;
       manpowerMode = !!saved.manpowerMode;
-      if(saved.colWidthsPx && COL_KEYS.every(function(k){ return typeof saved.colWidthsPx[k] === "number"; })){
-        colWidthsPx = saved.colWidthsPx;
+      if(saved.colWidthsPct && isValidColWidthsPct(saved.colWidthsPct)){
+        colWidthsPct = saved.colWidthsPct;
       }
       return true;
     }
@@ -648,6 +659,8 @@ function bindRowDrag(){
 }
 
 // ---- 入力表の列幅リサイズ（Excelのセル境界のようにドラッグで変更） ----
+// %指定＋table{width:100%}にしているので、合計が100%を超えるような値になっても
+// ブラウザのtable-layout:fixedが自動で比例縮小して収める（＝JSの手計算に頼らない）。
 function initColumnResize(){
   var table = document.getElementById("schedTable");
   var colgroup = table && table.querySelector("colgroup");
@@ -657,48 +670,32 @@ function initColumnResize(){
     cols[k] = colgroup.querySelector('col[data-col="' + k + '"]');
   });
 
-  if(!colWidthsPx){
-    var wrap0 = table.closest(".sched-wrap");
-    var initWidth = (wrap0 && wrap0.clientWidth) || 340;
-    colWidthsPx = {};
+  if(!colWidthsPct){
+    colWidthsPct = {};
+    COL_KEYS.forEach(function(k){ colWidthsPct[k] = DEFAULT_COL_PCT[k]; });
+  }
+
+  function tableWidthPx(){
+    return table.getBoundingClientRect().width || 340;
+  }
+  function minPct(key){
+    return (COL_MIN_PX[key] || 20) / tableWidthPx() * 100;
+  }
+
+  // 備考(note)は常に「残りの%」として再計算する（他の列の合計を100から引くだけ）
+  function recalcNotePct(){
+    var sumOthers = 0;
     COL_KEYS.forEach(function(k){
-      colWidthsPx[k] = Math.round(initWidth * (DEFAULT_COL_PCT[k] / 100));
+      if(k !== "note") sumOthers += colWidthsPct[k];
     });
-  }
-
-  function containerWidth(){
-    var wrap = table.closest(".sched-wrap");
-    return (wrap && wrap.clientWidth) || 340;
-  }
-
-  // 備考(note)以外の合計幅から、備考が吸収すべき残り幅を計算する。
-  // 保存されていた幅が今のパネル幅に対して大きすぎる場合は、伸縮可能な列を
-  // 比例縮小してでも必ずパネル幅に収める（スクロールバーを出さないため）。
-  function recalcNoteWidth(){
-    var cw = containerWidth();
-    var fixedSum = colWidthsPx.del;
-    var sumResizable = 0;
-    RESIZABLE_KEYS.forEach(function(k){ sumResizable += colWidthsPx[k]; });
-    var available = cw - fixedSum - COL_MIN_PX.note;
-    if(available > 0 && sumResizable > available){
-      var scale = available / sumResizable;
-      RESIZABLE_KEYS.forEach(function(k){
-        colWidthsPx[k] = Math.max(COL_MIN_PX[k], Math.round(colWidthsPx[k] * scale));
-      });
-      sumResizable = 0;
-      RESIZABLE_KEYS.forEach(function(k){ sumResizable += colWidthsPx[k]; });
-    }
-    colWidthsPx.note = Math.max(COL_MIN_PX.note, cw - fixedSum - sumResizable);
+    colWidthsPct.note = Math.max(minPct("note"), 100 - sumOthers);
   }
 
   function applyColWidths(){
-    recalcNoteWidth();
-    var total = 0;
+    recalcNotePct();
     COL_KEYS.forEach(function(k){
-      if(cols[k]) cols[k].style.width = colWidthsPx[k] + "px";
-      total += colWidthsPx[k];
+      if(cols[k]) cols[k].style.width = colWidthsPct[k] + "%";
     });
-    table.style.width = total + "px";
   }
   applyColWidths();
 
@@ -709,22 +706,24 @@ function initColumnResize(){
     handle.addEventListener("mousedown", function(e){
       e.preventDefault();
       var startX = e.clientX;
-      var startWidth = colWidthsPx[key];
-      var minWidth = COL_MIN_PX[key] || 24;
+      var startPct = colWidthsPct[key];
       handle.classList.add("dragging");
       document.body.classList.add("col-resizing");
 
       function onMove(ev){
-        var newWidth = startWidth + (ev.clientX - startX);
-        if(newWidth < minWidth) newWidth = minWidth;
+        var tw = tableWidthPx();
+        var dxPct = (ev.clientX - startX) / tw * 100;
+        var newPct = startPct + dxPct;
+        var min = minPct(key);
+        if(newPct < min) newPct = min;
         // 備考が最小幅を割り込む手前までしか広げられないようにする（画面からはみ出させない）
         var sumOthers = 0;
         COL_KEYS.forEach(function(k){
-          if(k !== key && k !== "note") sumOthers += colWidthsPx[k];
+          if(k !== key && k !== "note") sumOthers += colWidthsPct[k];
         });
-        var maxWidth = containerWidth() - sumOthers - COL_MIN_PX.note;
-        if(newWidth > maxWidth) newWidth = Math.max(minWidth, maxWidth);
-        colWidthsPx[key] = newWidth;
+        var maxPct = 100 - sumOthers - minPct("note");
+        if(newPct > maxPct) newPct = Math.max(min, maxPct);
+        colWidthsPct[key] = newPct;
         applyColWidths();
       }
       function onUp(){

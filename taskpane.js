@@ -564,6 +564,7 @@ function renderRows(){
     var mpDistOptions = Object.keys(mpDistLabels).map(function(k){
       return '<option value="' + k + '"' + (k === mpDist ? " selected" : "") + '>' + mpDistLabels[k] + "</option>";
     }).join("");
+    var mpInfo = mpWarningInfo(r);
     return '<tr data-id="' + r.id + '">' +
       '<td><div class="name-cell-inner">' +
         '<span class="row-drag-handle" title="ドラッグで並べ替え">⠿</span>' +
@@ -574,7 +575,7 @@ function renderRows(){
       '<td><input type="number" min="1" class="days-input" value="' + workingDaysOf(r) + '" placeholder="－" title="日数を入力すると、開始日から自動で終了日を計算します"></td>' +
       '<td><input type="text" class="note-input" value="' + escHtml(r.note) + '" placeholder="備考"></td>' +
       '<td class="color-cell"><div class="color-dots">' + dots + "</div></td>" +
-      '<td class="col-mp"><input type="number" min="0" class="mp-total-input" value="' + escHtml(r.mpTotal || "") + '" placeholder="人工数" title="この作業の総人工数（人日）。Excel側がまだ空欄のときだけ自動配分します"></td>' +
+      '<td class="col-mp"><input type="number" min="0" class="mp-total-input' + (mpInfo.insufficient ? " mp-warn" : "") + '" value="' + escHtml(r.mpTotal || "") + '" placeholder="人工数" title="' + escHtml(mpInfo.title) + '"></td>' +
       '<td class="col-mp"><select class="mp-dist-select" title="総人工数を稼働日にどう配分するか">' + mpDistOptions + "</select></td>" +
       '<td><button type="button" class="del-btn" title="この行を削除">✕</button></td>' +
       "</tr>";
@@ -595,6 +596,34 @@ function refreshDaysInput(tr){
   if(input) input.value = workingDaysOf(r);
 }
 
+var MP_TOTAL_TITLE = "この作業の総人工数（人日）。Excel側がまだ空欄のときだけ自動配分します";
+
+// 総人工数が「稼働日数×2人」に足りているか確認する（最低2人/日ルールのため）。
+// 足りない場合、実際に配分される日数と、全日を埋めるのに必要な人数をtitleで説明する
+function mpWarningInfo(r){
+  var wd = workingDaysOf(r);
+  var total = parseInt(r.mpTotal, 10);
+  if(!(total > 0) || typeof wd !== "number" || wd <= 0){
+    return { insufficient: false, title: MP_TOTAL_TITLE };
+  }
+  var needed = wd * 2;
+  if(total >= needed) return { insufficient: false, title: MP_TOTAL_TITLE };
+  var coveredDays = Math.floor(total / 2);
+  return {
+    insufficient: true,
+    title: "不足：稼働" + wd + "日中、2人/日で配れるのは" + coveredDays + "日分だけです（残りは空欄のままになります）。全日に配るには" + needed + "人以上にしてください。"
+  };
+}
+function refreshMpWarning(tr){
+  var r = rowById(Number(tr.dataset.id));
+  if(!r) return;
+  var input = tr.querySelector(".mp-total-input");
+  if(!input) return;
+  var info = mpWarningInfo(r);
+  input.classList.toggle("mp-warn", info.insufficient);
+  input.title = info.title;
+}
+
 function bindTableEvents(){
   var body = document.getElementById("schedBody");
   if(!body) return;
@@ -607,7 +636,10 @@ function bindTableEvents(){
     if(!r) return;
     if(t.classList.contains("name-input")) r.name = t.value;
     else if(t.classList.contains("note-input")) r.note = t.value;
-    else if(t.classList.contains("mp-total-input")) r.mpTotal = t.value;
+    else if(t.classList.contains("mp-total-input")){
+      r.mpTotal = t.value;
+      refreshMpWarning(tr);
+    }
     else return;
     saveState();
   });
@@ -625,6 +657,7 @@ function bindTableEvents(){
       var dateKey = t.classList.contains("start-input") ? "start" : "end";
       r[dateKey] = inputDate ? toISODate(inputDate) : "";
       refreshDaysInput(tr);
+      refreshMpWarning(tr);
       saveState();
     } else if(t.classList.contains("days-input")){
       // 所要日数 → 開始日から稼働日で数えて終了日を自動計算する（Z1.htmlと同じ規則）
@@ -638,6 +671,7 @@ function bindTableEvents(){
           if(endInput) endInput.value = formatJapaneseDate(end);
         }
       }
+      refreshMpWarning(tr);
       saveState();
     } else if(t.classList.contains("mp-dist-select")){
       r.mpDist = t.value;

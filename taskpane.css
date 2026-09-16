@@ -90,6 +90,7 @@ td.date-cell input{width:100%;font-size:10px;}
 .c-del{width:6%;}
 table.sched:not(.mp-on) .col-mp{display:none;}
 .mp-total-input{text-align:center;}
+table.sched input.mp-total-input.mp-warn{background:#fdecc8;box-shadow:inset 0 0 0 1px #b8790a;border-radius:2px;}
 .mp-dist-select{
   width:100%;font-size:9px;padding:1px;border:none;background:transparent;
   font-family:inherit;color:inherit;

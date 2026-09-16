@@ -354,6 +354,18 @@ function sameManpowerLayout(rowA, rowB, dayCount){
   return true;
 }
 
+// 2つの人工数行が日ごとの人数まで完全に同じか（空欄・0・非数値はすべて0として比較）。
+// 配分方法の変更（増加⇔減少）は「入っている日」は変わらず「人数」だけ変わるので、
+// 位置だけの比較では検出できない。値まで見て初めて違いが分かる
+function sameManpowerValues(rowA, rowB, dayCount){
+  for(var i = 0; i < dayCount; i++){
+    var a = parseFloat(rowA && rowA[i]); if(!isFinite(a) || a <= 0) a = 0;
+    var b = parseFloat(rowB && rowB[i]); if(!isFinite(b) || b <= 0) b = 0;
+    if(a !== b) return false;
+  }
+  return true;
+}
+
 // 労務者数グラフの目盛り間隔（majorUnit）を、その日の最大人数に応じて決める。
 // 最大値が10未満なら2刻み、10以上20未満なら4刻み、20以上40未満なら8刻み…と
 // 上限が10→20→40→80…と倍になるたびに、刻み幅も2→4→8→16…と倍になる
@@ -677,6 +689,25 @@ function refreshDaysInput(tr){
 }
 
 var MP_TOTAL_TITLE = "この作業の総人工数（人日）。Excel側がまだ空欄のときだけ自動配分します";
+
+// ---- 前回Excelへ書き込んだときのタスクペイン設定（総人工数・配分方法）を行ごとに覚えておき、
+//      「ユーザーが設定を変えた」のか「Excel側で手修正された」のかを区別する ----
+function mpSettingsTracked(rowIndex){
+  var r = rows[rowIndex];
+  return !!(r && r.mpAppliedTotal !== undefined && r.mpAppliedTotal !== null && r.mpAppliedTotal !== "");
+}
+// 設定を変えた＝明確な指示なので、確認なしで配分し直して良いケース
+function mpSettingsChanged(rowIndex, total, dist){
+  if(!mpSettingsTracked(rowIndex)) return false; // 未追跡（この機能より前のデータ）は変更扱いにしない
+  var r = rows[rowIndex];
+  return String(total) !== String(r.mpAppliedTotal) || (dist || "even") !== (r.mpAppliedDist || "even");
+}
+function markMpApplied(rowIndex, total, dist){
+  var r = rows[rowIndex];
+  if(!r) return;
+  r.mpAppliedTotal = String(total);
+  r.mpAppliedDist = dist || "even";
+}
 
 // 総人工数が「稼働日数×2人」に足りているか確認する（最低2人/日ルールのため）。
 // 足りない場合、実際に配分される日数と、全日を埋めるのに必要な人数をtitleで説明する
@@ -1020,24 +1051,28 @@ function generateGantt(){
       var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
       var total = parseInt(r.mpTotal, 10);
       if(!(oldSum > 0) || !(total > 0)) return;
-      if(oldSum !== total){
-        // 総人工数そのものが食い違っている
-        conflicts.push({ index: i, name: r.name || "(名称なし)", reason: "sum", oldSum: oldSum, newTotal: total });
-        return;
-      }
-      // 合計は同じでも、休日追加などで工程（稼働日）が変わっていると、Excel側の
-      // 配分は今の稼働日と噛み合わなくなる（延びた日が空欄のまま＝グラフもそこで止まる）
+      // タスクペインで総人工数・配分方法を変えた場合は明確な指示なので、確認せず配分し直す
+      if(mpSettingsChanged(i, total, r.mpDist)) return;
       var expected = buildManpowerRowValues(r.cells, total, r.mpDist);
-      if(!sameManpowerLayout(old, expected, L.days.length)){
-        conflicts.push({ index: i, name: r.name || "(名称なし)", reason: "layout", oldSum: oldSum, newTotal: total });
-      }
+      if(sameManpowerValues(old, expected, L.days.length)) return; // 既に同じ内容なら何も聞かない
+      var reason;
+      if(!mpSettingsTracked(i)) reason = "settings";          // 設定の追跡前（初回のすり合わせ）
+      else if(oldSum !== total) reason = "sum";                // 総人工数そのものが違う
+      else if(!sameManpowerLayout(old, expected, L.days.length)) reason = "layout"; // 稼働日とズレている
+      else reason = "edited";                                  // 同じ日に違う人数＝Excel側で手修正
+      conflicts.push({ index: i, name: r.name || "(名称なし)", reason: reason, oldSum: oldSum, newTotal: total });
     });
     if(conflicts.length === 0) return false;
+    var reasonText = {
+      settings: "：Excel側の人工数がタスクペインの設定と一致していません",
+      sum: "：総人工数が違います",
+      layout: "：配分が今の稼働日と合っていません（休日追加などで工程が変わった可能性）",
+      edited: "：Excel側で人数が手修正されています"
+    };
     var confirmMsg = "以下の作業は、Excel側の人工数とタスクペインの設定が一致していません。\n\n" +
       conflicts.map(function(c){
-        return c.reason === "sum"
-          ? "・" + c.name + "：総人工数が違います（Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工）"
-          : "・" + c.name + "：配分が今の稼働日と合っていません（休日追加などで工程が変わった可能性）";
+        var detail = c.reason === "sum" ? "（Excel側 " + c.oldSum + "人工／タスクペイン側 " + c.newTotal + "人工）" : "";
+        return "・" + c.name + reasonText[c.reason] + detail;
       }).join("\n") +
       "\n\nタスクペインの設定で配分し直しますか？\n" +
       "「上書きする」＝今の稼働日に合わせて配分し直す　／　「Excel側を残す」＝Excel側の値をそのまま残します";
@@ -1077,18 +1112,33 @@ function generateGantt(){
             var total = parseInt(r.mpTotal, 10);
             var oldSum = Array.isArray(old) ? old.reduce(function(a, v){ return a + (typeof v === "number" ? v : 0); }, 0) : 0;
             var expected = total > 0 ? buildManpowerRowValues(r.cells, total, r.mpDist) : null;
-            // 競合（合計の不一致、または配分が今の稼働日と噛み合っていない）は上で確認済み
-            var mismatch = oldHasData && expected &&
-              (total !== oldSum || !sameManpowerLayout(old, expected, L.days.length));
-            if(mismatch){
-              if(overwrite) return expected;
-              // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
-              if(rows[i]) rows[i].mpTotal = String(oldSum);
+
+            // 総人工数が未入力：Excel側の手入力があればそのまま、無ければ空欄のまま
+            if(!expected) return oldHasData ? old : L.days.map(function(){ return ""; });
+            // Excel側が空欄：自動配分をそのまま書き込む
+            if(!oldHasData){
+              markMpApplied(i, total, r.mpDist);
+              return expected;
+            }
+            // タスクペインで設定を変えた＝明確な指示なので、確認なしで配分し直す
+            if(mpSettingsChanged(i, total, r.mpDist)){
+              markMpApplied(i, total, r.mpDist);
+              return expected;
+            }
+            // 既に同じ内容なら触らない
+            if(sameManpowerValues(old, expected, L.days.length)){
+              markMpApplied(i, total, r.mpDist);
               return old;
             }
-            if(oldHasData) return old;
-            if(expected) return expected;
-            return L.days.map(function(){ return ""; });
+            // ここは上のモーダルで確認済みの不一致（設定未追跡・合計違い・稼働日とのズレ・手修正）
+            if(overwrite){
+              markMpApplied(i, total, r.mpDist);
+              return expected;
+            }
+            // 上書きしない：Excel側を残し、タスクペイン側の表示をExcelの実際値に合わせる
+            if(rows[i]) rows[i].mpTotal = String(oldSum);
+            markMpApplied(i, oldSum, r.mpDist);
+            return old;
           });
           saveState();
           renderRows();
@@ -1833,6 +1883,7 @@ if(typeof module !== "undefined" && module.exports){
     buildManpowerRowValues: buildManpowerRowValues,
     filledManpowerIndexes: filledManpowerIndexes,
     sameManpowerLayout: sameManpowerLayout,
+    sameManpowerValues: sameManpowerValues,
     computeManpowerMajorUnit: computeManpowerMajorUnit,
     computeLayout: computeLayout,
     boolToRuns: boolToRuns,

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>工程表ツール</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<link rel="stylesheet" href="taskpane.css?v=20260916h">
+<link rel="stylesheet" href="taskpane.css?v=20260916i">
 </head>
 <body>
   <header>
@@ -38,7 +38,8 @@
     <table class="sched" id="schedTable">
       <colgroup>
         <col data-col="name"><col data-col="start"><col data-col="end">
-        <col data-col="days"><col data-col="note"><col data-col="color"><col data-col="del">
+        <col data-col="days"><col data-col="note"><col data-col="color">
+        <col data-col="mptotal" class="col-mp"><col data-col="mpdist" class="col-mp"><col data-col="del">
       </colgroup>
       <thead>
         <tr>
@@ -48,6 +49,8 @@
           <th class="c-days" title="日数を入力すると、開始日から自動で終了日を計算します">所要<br>日数<span class="col-resizer" data-col="days"></span></th>
           <th class="c-note">備考</th>
           <th class="c-color">色<span class="col-resizer" data-col="color"></span></th>
+          <th class="c-mptotal col-mp" title="この作業の総人工数（人日）。入力すると、Excel側がまだ空欄のときだけ自動で日ごとに配分します">総人工数<span class="col-resizer" data-col="mptotal"></span></th>
+          <th class="c-mpdist col-mp" title="総人工数を稼働日にどう配分するか">配分<span class="col-resizer" data-col="mpdist"></span></th>
           <th class="c-del">消</th>
         </tr>
       </thead>
@@ -72,6 +75,6 @@
     </section>
   </main>
 
-  <script src="taskpane.js?v=20260916h"></script>
+  <script src="taskpane.js?v=20260916i"></script>
 </body>
 </html>

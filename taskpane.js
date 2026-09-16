@@ -219,7 +219,7 @@ function buildGanttModel(tasks, opts){
       return work;
     });
     var workingDays = valid ? countWorkingDays(t.start, t.end, workOnSaturday, specialHolidayDates) : null;
-    return { name: t.name || "", color: color, note: t.note || "", cells: cells, noteIndex: noteIndex, workingDays: workingDays };
+    return { name: t.name || "", color: color, note: t.note || "", cells: cells, noteIndex: noteIndex, workingDays: workingDays, mpTotal: t.mpTotal, mpDist: t.mpDist };
   });
 
   return {
@@ -265,6 +265,65 @@ function sumManpowerByDay(manpowerGrid, dayCount){
     }
   });
   return daily;
+}
+
+// 総人工数を稼働日数に自動配分する（mode: "even"=均等 / "increasing"=増加 / "decreasing"=減少）。
+// 1日あたり最低2人を基本とし、総数が足りず全稼働日に2人ずつ配れない場合は、日数を減らして
+// でも2人未満の日を作らない（先頭の稼働日から順に配り、残りの日は0人＝空欄のままにする）。
+// 端数（均等の場合の余り、増加・減少の場合の丸め誤差）は末尾の稼働日から順に+1する。
+function distributeManpower(total, numDays, mode){
+  total = Math.max(0, Math.floor(Number(total) || 0));
+  numDays = Math.max(0, Math.floor(Number(numDays) || 0));
+  if(numDays === 0 || total <= 0) return [];
+  var MIN = 2;
+  if(total < MIN){
+    var single = new Array(numDays).fill(0);
+    single[0] = total;
+    return single;
+  }
+  var activeDays = Math.min(numDays, Math.floor(total / MIN));
+  if(activeDays < 1) activeDays = 1;
+  var base = new Array(activeDays).fill(MIN);
+  var remaining = total - MIN * activeDays;
+
+  if(mode === "increasing" || mode === "decreasing"){
+    var weights = [];
+    for(var i = 0; i < activeDays; i++){
+      weights.push(mode === "increasing" ? (i + 1) : (activeDays - i));
+    }
+    var wsum = weights.reduce(function(a, b){ return a + b; }, 0);
+    var added = 0;
+    var adds = weights.map(function(w){
+      var a = wsum > 0 ? Math.floor(remaining * w / wsum) : 0;
+      added += a;
+      return a;
+    });
+    var leftover = remaining - added;
+    for(var k = 0; k < leftover; k++) adds[activeDays - 1 - k] += 1;
+    for(var j = 0; j < activeDays; j++) base[j] += adds[j];
+  } else {
+    var extra = Math.floor(remaining / activeDays);
+    var rem = remaining - extra * activeDays;
+    for(var m = 0; m < activeDays; m++) base[m] += extra;
+    for(var n = 0; n < rem; n++) base[activeDays - 1 - n] += 1;
+  }
+
+  var result = new Array(numDays).fill(0);
+  for(var p = 0; p < activeDays; p++) result[p] = base[p];
+  return result;
+}
+
+// cells（全期間ぶんの稼働日フラグ配列）のうち稼働日だけにdistributeManpowerの結果を割り当て、
+// 全期間幅の配列にして返す（Excelのセルにそのまま書き込める形。非稼働日・0人の日は""）
+function buildManpowerRowValues(cells, total, mode){
+  var workingIdx = [];
+  cells.forEach(function(work, idx){ if(work) workingIdx.push(idx); });
+  var dist = distributeManpower(total, workingIdx.length, mode);
+  var out = cells.map(function(){ return ""; });
+  workingIdx.forEach(function(idx, i){
+    if(dist[i] > 0) out[idx] = dist[i];
+  });
+  return out;
 }
 
 // 労務者数グラフの目盛り間隔（majorUnit）を、その日の最大人数に応じて決める。
@@ -369,11 +428,13 @@ var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力
 // ---- 入力表の列幅（ドラッグした列だけ幅が変わり、他の列はそのまま。備考(note)列が残り幅を
 //      自動で吸収する。%指定＋table width:100%なので、パネル幅を超えることはブラウザの
 //      レイアウト計算上そもそも起こりえない（JS側で合計を手計算して補正する必要がない）） ----
-var COL_KEYS = ["name", "start", "end", "days", "note", "color", "del"];
-var RESIZABLE_KEYS = ["name", "start", "end", "days", "color"]; // note=残り幅を吸収, del=固定
-var COL_MIN_PX = { name: 40, start: 34, end: 34, days: 24, note: 55, color: 45, del: 20 };
-var DEFAULT_COL_PCT = { name: 15, start: 13, end: 13, days: 8, note: 26, color: 19, del: 6 };
+var COL_KEYS = ["name", "start", "end", "days", "note", "color", "mptotal", "mpdist", "del"];
+var MP_ONLY_KEYS = ["mptotal", "mpdist"]; // 労務者数モードがオフの間はレイアウトから除外する
+var RESIZABLE_KEYS = ["name", "start", "end", "days", "color", "mptotal", "mpdist"]; // note=残り幅を吸収, del=固定
+var COL_MIN_PX = { name: 40, start: 34, end: 34, days: 24, note: 55, color: 45, mptotal: 30, mpdist: 40, del: 20 };
+var DEFAULT_COL_PCT = { name: 15, start: 13, end: 13, days: 8, note: 18, color: 12, mptotal: 8, mpdist: 7, del: 6 };
 var colWidthsPct = null; // 未設定ならデフォルト比率を使う（%単位、noteは常に残りとして再計算）
+var reapplyColWidths = null; // 労務者数モードの切り替え時に、列幅を再計算するための参照（initColumnResize内で設定）
 
 // 保存されていた列幅%が壊れていないか確認する（合計が大きく崩れていると、列が
 // ほぼ0%に押し潰されて見えなくなるため、その場合はデフォルトに戻す）
@@ -468,7 +529,7 @@ function escHtml(s){
 }
 
 function addRow(){
-  rows.push({ id: nextId++, name: "", start: "", end: "", note: "", color: DEFAULT_BAR_COLOR });
+  rows.push({ id: nextId++, name: "", start: "", end: "", note: "", color: DEFAULT_BAR_COLOR, mpTotal: "", mpDist: "even" });
   saveState();
   renderRows();
   var body = document.getElementById("schedBody");
@@ -491,12 +552,17 @@ function renderRows(){
   var body = document.getElementById("schedBody");
   if(!body) return;
   if(rows.length === 0){
-    body.innerHTML = '<tr><td colspan="7" class="empty-hint">まだ作業がありません。下のボタンから追加してください。</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty-hint">まだ作業がありません。下のボタンから追加してください。</td></tr>';
     return;
   }
+  var mpDistLabels = { even: "均等", increasing: "増加", decreasing: "減少" };
   body.innerHTML = rows.map(function(r){
     var dots = SCHEDULE_COLORS.map(function(c){
       return '<span class="color-dot' + (c === r.color ? " active" : "") + '" style="background:' + c + ';" data-color="' + c + '" title="' + c + '"></span>';
+    }).join("");
+    var mpDist = r.mpDist || "even";
+    var mpDistOptions = Object.keys(mpDistLabels).map(function(k){
+      return '<option value="' + k + '"' + (k === mpDist ? " selected" : "") + '>' + mpDistLabels[k] + "</option>";
     }).join("");
     return '<tr data-id="' + r.id + '">' +
       '<td><div class="name-cell-inner">' +
@@ -508,6 +574,8 @@ function renderRows(){
       '<td><input type="number" min="1" class="days-input" value="' + workingDaysOf(r) + '" placeholder="－" title="日数を入力すると、開始日から自動で終了日を計算します"></td>' +
       '<td><input type="text" class="note-input" value="' + escHtml(r.note) + '" placeholder="備考"></td>' +
       '<td class="color-cell"><div class="color-dots">' + dots + "</div></td>" +
+      '<td class="col-mp"><input type="number" min="0" class="mp-total-input" value="' + escHtml(r.mpTotal || "") + '" placeholder="人工数" title="この作業の総人工数（人日）。Excel側がまだ空欄のときだけ自動配分します"></td>' +
+      '<td class="col-mp"><select class="mp-dist-select" title="総人工数を稼働日にどう配分するか">' + mpDistOptions + "</select></td>" +
       '<td><button type="button" class="del-btn" title="この行を削除">✕</button></td>' +
       "</tr>";
   }).join("");
@@ -539,6 +607,7 @@ function bindTableEvents(){
     if(!r) return;
     if(t.classList.contains("name-input")) r.name = t.value;
     else if(t.classList.contains("note-input")) r.note = t.value;
+    else if(t.classList.contains("mp-total-input")) r.mpTotal = t.value;
     else return;
     saveState();
   });
@@ -569,6 +638,9 @@ function bindTableEvents(){
           if(endInput) endInput.value = formatJapaneseDate(end);
         }
       }
+      saveState();
+    } else if(t.classList.contains("mp-dist-select")){
+      r.mpDist = t.value;
       saveState();
     }
   });
@@ -681,23 +753,31 @@ function initColumnResize(){
   function minPct(key){
     return (COL_MIN_PX[key] || 20) / tableWidthPx() * 100;
   }
+  // 労務者数モードがオフの間は総人工数・配分の2列をレイアウト計算から除外する
+  // （CSSでdisplay:noneにしているので、その分の%は備考に回す）
+  function activeColKeys(){
+    if(manpowerMode) return COL_KEYS;
+    return COL_KEYS.filter(function(k){ return MP_ONLY_KEYS.indexOf(k) === -1; });
+  }
 
   // 備考(note)は常に「残りの%」として再計算する（他の列の合計を100から引くだけ）
   function recalcNotePct(){
     var sumOthers = 0;
-    COL_KEYS.forEach(function(k){
+    activeColKeys().forEach(function(k){
       if(k !== "note") sumOthers += colWidthsPct[k];
     });
     colWidthsPct.note = Math.max(minPct("note"), 100 - sumOthers);
   }
 
   function applyColWidths(){
+    table.classList.toggle("mp-on", manpowerMode);
     recalcNotePct();
     COL_KEYS.forEach(function(k){
       if(cols[k]) cols[k].style.width = colWidthsPct[k] + "%";
     });
   }
   applyColWidths();
+  reapplyColWidths = applyColWidths;
 
   table.querySelectorAll(".col-resizer").forEach(function(handle){
     var key = handle.dataset.col;
@@ -718,7 +798,7 @@ function initColumnResize(){
         if(newPct < min) newPct = min;
         // 備考が最小幅を割り込む手前までしか広げられないようにする（画面からはみ出させない）
         var sumOthers = 0;
-        COL_KEYS.forEach(function(k){
+        activeColKeys().forEach(function(k){
           if(k !== key && k !== "note") sumOthers += colWidthsPct[k];
         });
         var maxPct = 100 - sumOthers - minPct("note");
@@ -765,6 +845,8 @@ function generateGantt(){
       end: fromISODate(r.end),
       note: r.note,
       color: r.color,
+      mpTotal: r.mpTotal,
+      mpDist: r.mpDist,
     };
   });
   var model = buildGanttModel(tasks, { workOnSaturday: workOnSaturday, specialHolidayDates: specialHolidays });
@@ -834,18 +916,28 @@ function generateGantt(){
             return ctx.sync();
           });
         }).then(function(){
-          if(!manpowerMode || !savedManpowerGrid) return;
-          var dailyManpower = sumManpowerByDay(savedManpowerGrid, L.days.length);
-          var curve = buildCumulativeCurve(dailyManpower);
-          // 実際に数値が読み取れた場合のみ書き戻す。前回データなし・構成不一致などで
-          // 全て空だった場合は何もせず、生成時の初期グラフ（作業日数ベース）を残す
-          if(curve.total <= 0) return;
-          // 読み取れた人工数を新しいシートに書き戻してから、
-          // 進捗率グラフ（人工数基準）と労務者数グラフを描く
+          if(!manpowerMode) return;
+          // 作業ごとに「Excel側に前回の入力値が残っていればそれを維持」「無ければ
+          // 総人工数＋配分方法が設定されている場合のみ自動で仮配分」して書き込む。
+          // 自動配分はあくまで手入力の代わりの初期値で、書き込んだ後もExcel側で
+          // 自由に上書き修正でき、次回生成時もその修正値がそのまま維持される。
+          var finalGrid = L.rowsOut.map(function(r, i){
+            var old = savedManpowerGrid && savedManpowerGrid[i];
+            var oldHasData = Array.isArray(old) && old.some(function(v){ return typeof v === "number" && v > 0; });
+            if(oldHasData) return old;
+            var total = parseInt(r.mpTotal, 10);
+            if(total > 0) return buildManpowerRowValues(r.cells, total, r.mpDist);
+            return L.days.map(function(){ return ""; });
+          });
           L.rowsOut.forEach(function(r, i){
             var mpRow = L.taskTop + i * L.ROWS_PER_TASK + 1;
-            sheet.getRangeByIndexes(mpRow, 1, 1, L.days.length).values = [savedManpowerGrid[i]];
+            sheet.getRangeByIndexes(mpRow, 1, 1, L.days.length).values = [finalGrid[i]];
           });
+          var dailyManpower = sumManpowerByDay(finalGrid, L.days.length);
+          var curve = buildCumulativeCurve(dailyManpower);
+          // 前回データも自動配分も無く、全て空だった場合は何もせず、
+          // 生成時の初期グラフ（作業日数ベース）を残す
+          if(curve.total <= 0) return ctx.sync();
           return (L.showProgress
             ? drawProgressLineChart(ctx, sheet, L, curve.cumulativePct, curve.dailyCount)
             : Promise.resolve()
@@ -1513,6 +1605,7 @@ function initUI(info){
     mpCheck.addEventListener("change", function(e){
       manpowerMode = e.target.checked;
       saveState();
+      if(reapplyColWidths) reapplyColWidths();
     });
   }
   var addBtn = document.getElementById("addBtn");
@@ -1571,6 +1664,8 @@ if(typeof module !== "undefined" && module.exports){
     buildProgressCurve: buildProgressCurve,
     buildCumulativeCurve: buildCumulativeCurve,
     sumManpowerByDay: sumManpowerByDay,
+    distributeManpower: distributeManpower,
+    buildManpowerRowValues: buildManpowerRowValues,
     computeManpowerMajorUnit: computeManpowerMajorUnit,
     computeLayout: computeLayout,
     boolToRuns: boolToRuns,

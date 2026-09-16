@@ -366,10 +366,11 @@ var specialHolidays = []; // 特別休業日 ["YYYY-MM-DD", ...]（日曜・祝�
 var showProgressChart = false; // 進捗率グラフ（出来高累計％の折れ線）も出力するか
 var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力行を追加）を使うか
 
-// ---- 入力表の列幅（Excelのセルのようにドラッグで変更できる。%単位、合計100） ----
+// ---- 入力表の列幅（Excelのセルのように、ドラッグした列だけ幅が変わり他の列はそのまま横にずれる。px単位） ----
 var COL_KEYS = ["name", "start", "end", "days", "note", "color", "del"];
-var COL_MIN_PCT = { name: 10, start: 8, end: 8, days: 6, note: 8, color: 8, del: 4 };
-var colWidthsPct = null; // 未設定ならCSSの初期値から読み取る
+var COL_MIN_PX = { name: 60, start: 50, end: 50, days: 40, note: 60, color: 70, del: 24 };
+var DEFAULT_COL_PCT = { name: 15, start: 13, end: 13, days: 8, note: 26, color: 19, del: 6 };
+var colWidthsPx = null; // 未設定ならパネル幅からデフォルト比率で計算する
 
 function setStatus(msg, isError){
   var el = document.getElementById("status");
@@ -381,7 +382,7 @@ function setStatus(msg, isError){
 // ---- 保存／復元（localStorageが使えない環境でも続行できるようにtry/catch） ----
 function saveState(){
   try{
-    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode, colWidthsPct: colWidthsPct }));
+    localStorage.setItem("m5ganttRows", JSON.stringify({ rows: rows, nextId: nextId, workOnSaturday: workOnSaturday, specialHolidays: specialHolidays, showProgressChart: showProgressChart, manpowerMode: manpowerMode, colWidthsPx: colWidthsPx }));
   }catch(err){}
 }
 function loadState(){
@@ -394,8 +395,8 @@ function loadState(){
       specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
       showProgressChart = !!saved.showProgressChart;
       manpowerMode = !!saved.manpowerMode;
-      if(saved.colWidthsPct && COL_KEYS.every(function(k){ return typeof saved.colWidthsPct[k] === "number"; })){
-        colWidthsPct = saved.colWidthsPct;
+      if(saved.colWidthsPx && COL_KEYS.every(function(k){ return typeof saved.colWidthsPx[k] === "number"; })){
+        colWidthsPx = saved.colWidthsPx;
       }
       return true;
     }
@@ -654,48 +655,40 @@ function initColumnResize(){
     cols[k] = colgroup.querySelector('col[data-col="' + k + '"]');
   });
 
-  if(!colWidthsPct){
-    var ths = table.querySelectorAll("thead th");
-    var tableWidth = table.getBoundingClientRect().width || 1;
-    colWidthsPct = {};
-    COL_KEYS.forEach(function(k, i){
-      var th = ths[i];
-      colWidthsPct[k] = th ? (th.getBoundingClientRect().width / tableWidth * 100) : (100 / COL_KEYS.length);
+  if(!colWidthsPx){
+    var wrap = table.closest(".sched-wrap");
+    var containerWidth = (wrap && wrap.clientWidth) || 340;
+    colWidthsPx = {};
+    COL_KEYS.forEach(function(k){
+      colWidthsPx[k] = Math.round(containerWidth * (DEFAULT_COL_PCT[k] / 100));
     });
   }
 
   function applyColWidths(){
+    var total = 0;
     COL_KEYS.forEach(function(k){
-      if(cols[k]) cols[k].style.width = colWidthsPct[k] + "%";
+      if(cols[k]) cols[k].style.width = colWidthsPx[k] + "px";
+      total += colWidthsPx[k];
     });
+    table.style.width = total + "px";
   }
   applyColWidths();
 
   table.querySelectorAll(".col-resizer").forEach(function(handle){
     var key = handle.dataset.col;
-    var idx = COL_KEYS.indexOf(key);
-    var nextKey = COL_KEYS[idx + 1];
-    if(!nextKey) return;
 
     handle.addEventListener("mousedown", function(e){
       e.preventDefault();
       var startX = e.clientX;
-      var tableWidth = table.getBoundingClientRect().width || 1;
-      var startCur = colWidthsPct[key];
-      var startNext = colWidthsPct[nextKey];
+      var startWidth = colWidthsPx[key];
+      var minWidth = COL_MIN_PX[key] || 24;
       handle.classList.add("dragging");
       document.body.classList.add("col-resizing");
 
       function onMove(ev){
-        var dxPct = (ev.clientX - startX) / tableWidth * 100;
-        var minCur = COL_MIN_PCT[key] || 4;
-        var minNext = COL_MIN_PCT[nextKey] || 4;
-        var newCur = startCur + dxPct;
-        var newNext = startNext - dxPct;
-        if(newCur < minCur){ newNext -= (minCur - newCur); newCur = minCur; }
-        if(newNext < minNext){ newCur -= (minNext - newNext); newNext = minNext; }
-        colWidthsPct[key] = newCur;
-        colWidthsPct[nextKey] = newNext;
+        var newWidth = startWidth + (ev.clientX - startX);
+        if(newWidth < minWidth) newWidth = minWidth;
+        colWidthsPx[key] = newWidth;
         applyColWidths();
       }
       function onUp(){

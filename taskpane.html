@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>工程表ツール</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<link rel="stylesheet" href="taskpane.css?v=20260916c">
+<link rel="stylesheet" href="taskpane.css?v=20260916d">
 </head>
 <body>
   <header>
@@ -34,6 +34,7 @@
       <div id="specialHolidayList" class="special-holiday-list"></div>
     </section>
 
+    <div class="sched-wrap">
     <table class="sched" id="schedTable">
       <colgroup>
         <col data-col="name"><col data-col="start"><col data-col="end">
@@ -46,12 +47,13 @@
           <th class="c-date">終了日<span class="col-resizer" data-col="end"></span></th>
           <th class="c-days" title="日数を入力すると、開始日から自動で終了日を計算します">所要<br>日数<span class="col-resizer" data-col="days"></span></th>
           <th class="c-note">備考<span class="col-resizer" data-col="note"></span></th>
-          <th class="c-color">色</th>
+          <th class="c-color">色<span class="col-resizer" data-col="color"></span></th>
           <th class="c-del">消</th>
         </tr>
       </thead>
       <tbody id="schedBody"></tbody>
     </table>
+    </div>
     <button type="button" id="addBtn" class="add-row">＋ 作業を追加</button>
 
     <button type="button" id="genBtn" class="primary">🔄 ガントチャートを生成</button>
@@ -70,6 +72,6 @@
     </section>
   </main>
 
-  <script src="taskpane.js?v=20260916c"></script>
+  <script src="taskpane.js?v=20260916d"></script>
 </body>
 </html>

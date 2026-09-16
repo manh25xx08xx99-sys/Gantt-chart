@@ -171,7 +171,11 @@ function buildGanttModel(tasks, opts){
   var minT = Math.min.apply(null, dated.map(function(t){ return t.start.getTime(); }));
   var maxT = Math.max.apply(null, dated.map(function(t){ return t.end.getTime(); }));
   var minD = new Date(minT), maxD = new Date(maxT);
-  var periodStart = noonDate(minD.getFullYear(), minD.getMonth(), minD.getDate());
+  // 既定は最初の開始日から。fullStartMonthがtrueなら開始日の月の1日から表示する
+  // （工期が短いと表の列数が少なく、印刷したときに見栄えが悪くなるため）
+  var periodStart = opts.fullStartMonth
+    ? noonDate(minD.getFullYear(), minD.getMonth(), 1)
+    : noonDate(minD.getFullYear(), minD.getMonth(), minD.getDate());
   var periodEndRaw = noonDate(maxD.getFullYear(), maxD.getMonth(), maxD.getDate());
   var periodEnd = noonDate(maxD.getFullYear(), maxD.getMonth() + 1, 0); // 最大月の月末まで表示
 
@@ -443,6 +447,7 @@ var workOnSaturday = true;
 var specialHolidays = []; // 特別休業日 ["YYYY-MM-DD", ...]（日曜・祝日と同じ休み扱い）
 var showProgressChart = false; // 進捗率グラフ（出来高累計％の折れ線）も出力するか
 var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力行を追加）を使うか
+var fullStartMonth = false; // 開始日の月を1日から表示するか（短い工期でも表の幅を確保する）
 
 // ---- 入力表の列幅（ドラッグした列だけ幅が変わり、他の列はそのまま。備考(note)列が残り幅を
 //      自動で吸収する。%指定＋table width:100%なので、パネル幅を超えることはブラウザの
@@ -524,7 +529,7 @@ function saveState(){
   var payload = {
     rows: rows, nextId: nextId, workOnSaturday: workOnSaturday,
     specialHolidays: specialHolidays, showProgressChart: showProgressChart,
-    manpowerMode: manpowerMode, colWidthsPct: colWidthsPct
+    manpowerMode: manpowerMode, fullStartMonth: fullStartMonth, colWidthsPct: colWidthsPct
   };
   var settings = docSettings();
   if(settings){
@@ -560,6 +565,7 @@ function loadState(){
   specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
   showProgressChart = !!saved.showProgressChart;
   manpowerMode = !!saved.manpowerMode;
+  fullStartMonth = !!saved.fullStartMonth;
   if(saved.colWidthsPct && isValidColWidthsPct(saved.colWidthsPct)){
     colWidthsPct = saved.colWidthsPct;
   }
@@ -1035,7 +1041,7 @@ function generateGantt(){
       mpDist: r.mpDist,
     };
   });
-  var model = buildGanttModel(tasks, { workOnSaturday: workOnSaturday, specialHolidayDates: specialHolidays });
+  var model = buildGanttModel(tasks, { workOnSaturday: workOnSaturday, specialHolidayDates: specialHolidays, fullStartMonth: fullStartMonth });
   if(!model){
     setStatus("開始日・終了日が両方入った作業がありません。", true);
     return;
@@ -1832,6 +1838,14 @@ function initUI(info){
       recalcEndDatesForCalendarChange(oldWorkOnSaturday, specialHolidays);
       saveState();
       renderRows();
+    });
+  }
+  var monthCheck = document.getElementById("fullStartMonthCheck");
+  if(monthCheck){
+    monthCheck.checked = fullStartMonth;
+    monthCheck.addEventListener("change", function(e){
+      fullStartMonth = e.target.checked;
+      saveState();
     });
   }
   var progCheck = document.getElementById("progressChartCheck");

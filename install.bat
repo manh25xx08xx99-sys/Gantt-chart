@@ -1,4 +1,7 @@
 @echo off
+rem File nay luu dang UTF-8 (khong BOM) va co chua tieng Nhat, nen doi console sang
+rem UTF-8 truoc khi in ra. Neu khong, chu tieng Nhat se hien thanh ky tu la.
+chcp 65001 >nul
 rem Cai dat Add-in "工程表ツール" cho Excel tren may nay.
 rem Khong can Node.js, khong can chay server (taskpane duoc host san tren GitHub Pages).
 rem Ngoai viec dang ky Add-in, file nay con bat che do TU DONG CAP NHAT manifest.xml

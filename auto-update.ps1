@@ -1,4 +1,4 @@
-<#
+﻿<#
   工程表ツール（Gantt-chart アドイン）の manifest.xml を GitHub の最新版に合わせる。
 
     auto-update.ps1          … 今すぐ manifest.xml を最新版にする（自動更新タスクからはこの形で呼ばれる）

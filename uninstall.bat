@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 rem Go Add-in "工程表ツール" khoi Excel tren may nay (khong can Node.js).
 rem Xoa ca tac vu tu dong cap nhat manifest.xml.
 schtasks /delete /tn "GanttAddin_AutoUpdateManifest" /f >nul 2>&1

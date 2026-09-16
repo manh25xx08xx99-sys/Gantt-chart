@@ -637,9 +637,13 @@ function recalcEndDatesForCalendarChange(oldWorkOnSaturday, oldSpecialHolidays){
   rows.forEach(function(r){
     var s = fromISODate(r.start), e = fromISODate(r.end);
     if(!s || !e) return;
-    var n = countWorkingDays(s, e, oldWorkOnSaturday, oldSpecialHolidays);
-    if(n === null || n <= 0) return;
-    var newEnd = addWorkingDays(s, n, workOnSaturday, specialHolidays);
+    var before = countWorkingDays(s, e, oldWorkOnSaturday, oldSpecialHolidays);
+    var after = countWorkingDays(s, e, workOnSaturday, specialHolidays);
+    // その作業の期間内の稼働日数が実際に変わった場合だけ終了日を動かす。
+    // 影響がない作業（追加した休日が期間外など）の終了日は一切触らない
+    // （触ると、終了日が元々休日だった場合に稼働日まで前詰めされて短くなってしまう）
+    if(before === null || after === null || before <= 0 || before === after) return;
+    var newEnd = addWorkingDays(s, before, workOnSaturday, specialHolidays);
     if(newEnd) r.end = toISODate(newEnd);
   });
 }

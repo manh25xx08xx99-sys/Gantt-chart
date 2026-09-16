@@ -671,14 +671,24 @@ function initColumnResize(){
     return (wrap && wrap.clientWidth) || 340;
   }
 
-  // 備考(note)以外の合計幅から、備考が吸収すべき残り幅を計算する
+  // 備考(note)以外の合計幅から、備考が吸収すべき残り幅を計算する。
+  // 保存されていた幅が今のパネル幅に対して大きすぎる場合は、伸縮可能な列を
+  // 比例縮小してでも必ずパネル幅に収める（スクロールバーを出さないため）。
   function recalcNoteWidth(){
-    var sumOthers = 0;
-    COL_KEYS.forEach(function(k){
-      if(k !== "note") sumOthers += colWidthsPx[k];
-    });
-    var noteWidth = containerWidth() - sumOthers;
-    colWidthsPx.note = Math.max(COL_MIN_PX.note, noteWidth);
+    var cw = containerWidth();
+    var fixedSum = colWidthsPx.del;
+    var sumResizable = 0;
+    RESIZABLE_KEYS.forEach(function(k){ sumResizable += colWidthsPx[k]; });
+    var available = cw - fixedSum - COL_MIN_PX.note;
+    if(available > 0 && sumResizable > available){
+      var scale = available / sumResizable;
+      RESIZABLE_KEYS.forEach(function(k){
+        colWidthsPx[k] = Math.max(COL_MIN_PX[k], Math.round(colWidthsPx[k] * scale));
+      });
+      sumResizable = 0;
+      RESIZABLE_KEYS.forEach(function(k){ sumResizable += colWidthsPx[k]; });
+    }
+    colWidthsPx.note = Math.max(COL_MIN_PX.note, cw - fixedSum - sumResizable);
   }
 
   function applyColWidths(){

@@ -52,7 +52,7 @@ main{padding:10px 10px 14px;}
   border:none;background:transparent;color:#9b3e3e;font:inherit;font-size:12px;line-height:1;cursor:pointer;padding:0;
 }
 .holiday-empty{font-size:10.5px;color:#777;}
-.sched-wrap{overflow-x:auto;max-width:100%;}
+.sched-wrap{overflow-x:hidden;max-width:100%;}
 table.sched{
   border-collapse:collapse;
   table-layout:fixed;

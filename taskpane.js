@@ -528,16 +528,20 @@ function addSpecialHoliday(){
     setStatus("その日は既に特別休業日として追加されています。", true);
     return;
   }
+  var oldHolidays = specialHolidays.slice();
   specialHolidays.push(iso);
   specialHolidays.sort(); // ISO文字列は辞書順＝日付順
+  recalcEndDatesForCalendarChange(workOnSaturday, oldHolidays);
   saveState();
   renderSpecialHolidays();
   renderRows(); // 稼働日の扱いが変わるので所要日数の表示を作り直す
-  setStatus(formatJapaneseDate(d) + "（" + WEEKDAY_JP[d.getDay()] + "）を特別休業日にしました。🔄 ガントチャートを生成し直すと反映されます。");
+  setStatus(formatJapaneseDate(d) + "（" + WEEKDAY_JP[d.getDay()] + "）を特別休業日にしました。所要日数を保つため、該当する作業の終了日を自動で調整しました。🔄 ガントチャートを生成し直すと反映されます。");
   input.value = "";
 }
 function removeSpecialHoliday(iso){
+  var oldHolidays = specialHolidays.slice();
   specialHolidays = specialHolidays.filter(function(x){ return x !== iso; });
+  recalcEndDatesForCalendarChange(workOnSaturday, oldHolidays);
   saveState();
   renderSpecialHolidays();
   renderRows();
@@ -623,6 +627,21 @@ function workingDaysOf(r){
   var s = fromISODate(r.start), e = fromISODate(r.end);
   var n = countWorkingDays(s, e, workOnSaturday, specialHolidays);
   return n === null ? "" : n;
+}
+
+// 特別休業日の追加・削除や「土曜日も稼働する」の切り替えで稼働日の数え方が変わっても、
+// 各作業の所要日数（稼働日数）自体は変わらないよう、終了日を再計算する
+// （休日が増える・土曜が休みになる→終了日が後ろにずれる、その逆→前にずれる）。
+// old*は変更前の状態、新しい状態は現在のworkOnSaturday/specialHolidaysを使う
+function recalcEndDatesForCalendarChange(oldWorkOnSaturday, oldSpecialHolidays){
+  rows.forEach(function(r){
+    var s = fromISODate(r.start), e = fromISODate(r.end);
+    if(!s || !e) return;
+    var n = countWorkingDays(s, e, oldWorkOnSaturday, oldSpecialHolidays);
+    if(n === null || n <= 0) return;
+    var newEnd = addWorkingDays(s, n, workOnSaturday, specialHolidays);
+    if(newEnd) r.end = toISODate(newEnd);
+  });
 }
 function refreshDaysInput(tr){
   var r = rowById(Number(tr.dataset.id));
@@ -1686,9 +1705,11 @@ function initUI(info){
   if(sat){
     sat.checked = workOnSaturday;
     sat.addEventListener("change", function(e){
+      var oldWorkOnSaturday = workOnSaturday;
       workOnSaturday = e.target.checked;
+      // 稼働日の扱いが変わっても各作業の所要日数が変わらないよう、終了日を再計算する
+      recalcEndDatesForCalendarChange(oldWorkOnSaturday, specialHolidays);
       saveState();
-      // 稼働日の扱いが変わると自動計算の終了日も変わるので、日数表示を作り直す
       renderRows();
     });
   }

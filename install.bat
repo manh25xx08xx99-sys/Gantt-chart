@@ -13,11 +13,11 @@ set "MANIFEST=%DIR%manifest.xml"
 set "UPDATER=%DIR%auto-update.ps1"
 set "RAW=https://raw.githubusercontent.com/manh25xx08xx99-sys/Gantt-chart/main"
 
-rem (1) Neu chua co auto-update.ps1 thi tai tu GitHub (de chi can install.bat cung cai duoc)
-if not exist "%UPDATER%" (
-  echo Dang tai auto-update.ps1 tu GitHub...
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%RAW%/auto-update.ps1' -OutFile '%UPDATER%' -UseBasicParsing" 2>nul
-)
+rem (1) Luon tai ban moi nhat cua auto-update.ps1 tu GitHub, ghi de len ban cu.
+rem Tai vao file tam roi moi doi ten, de neu tai loi thi ban cu van con dung duoc.
+echo Dang tai auto-update.ps1 tu GitHub...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%RAW%/auto-update.ps1' -OutFile '%UPDATER%.new' -UseBasicParsing" 2>nul
+if exist "%UPDATER%.new" move /y "%UPDATER%.new" "%UPDATER%" >nul
 
 rem (2) auto-update.ps1 lo luon: tai manifest.xml moi nhat, dang ky Add-in, bat tu dong cap nhat
 if exist "%UPDATER%" (

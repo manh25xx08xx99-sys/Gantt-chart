@@ -1514,12 +1514,13 @@ async function writeGanttSheet(ctx, model, sheet){
     for(var i2 = 0; i2 < days.length; i2++) barLine.push("");
     grid.push(barLine);
   });
-  grid.push(padRow(["行事・備考等"], nCols));
-  var legendLine2 = [];
-  // 本文は見本セル（白1・灰2・白1）の後ろから書く。列が足りないときは先頭に書く
-  if(days.length > LEGEND_SAMPLE_COLS) legendLine2[1 + LEGEND_SAMPLE_COLS] = model.legendText;
-  else if(days.length > 0) legendLine2[1] = model.legendText;
-  grid.push(padRow(legendLine2, nCols));
+  var legendLine1 = ["行事・備考等"];
+  // 本文は見本セル（白1・灰2・白1）の右側にある「3行結合の本文セル」の左上に書く
+  // （結合すると左上以外の値は消えるため、中段ではなく上段に書く）。列が足りないときは先頭に書く
+  if(days.length > LEGEND_SAMPLE_COLS) legendLine1[1 + LEGEND_SAMPLE_COLS] = model.legendText;
+  else if(days.length > 0) legendLine1[1] = model.legendText;
+  grid.push(padRow(legendLine1, nCols));
+  grid.push(padRow([], nCols));
   grid.push(padRow([], nCols));
   if(showProgress){
     // 各行のA列に、その行の上端が示す％（100→10）を入れる。0％は帯の下端（ラベルなし）
@@ -1735,20 +1736,30 @@ async function writeGanttSheet(ctx, model, sheet){
   });
 
   // 凡例行（行事・備考等）：3行のボックス。A列は3行まとめて1つのセルに結合する。
-  // 上段・下段は日付列全体を結合。中段は先頭の見本セル（白1・灰2・白1）を残して、
-  // その後ろを結合して本文欄にする
+  // 日付列側は左右2つのブロックに分ける：
+  //   左の見本（4列）… 上段4列を結合／中段は白1・灰2（結合）・白1／下段4列を結合
+  //   右の本文 …………… 3行×残りの列をまとめて1つのセルに結合（折り返して表示）
   var legendLabel = sheet.getRangeByIndexes(legendTop, 0, LEGEND_ROWS, 1);
   legendLabel.merge();
+  var legendTextRange = null;
   if(days.length > LEGEND_SAMPLE_COLS){
-    sheet.getRangeByIndexes(legendTop, 1, 1, days.length).merge();
-    sheet.getRangeByIndexes(legendTop + 2, 1, 1, days.length).merge();
-    sheet.getRangeByIndexes(legendTop + 1, 1 + LEGEND_SAMPLE_COLS, 1, days.length - LEGEND_SAMPLE_COLS).merge();
-  } else if(days.length > 1){
-    sheet.getRangeByIndexes(legendTop + 1, 1, 1, days.length).merge();
+    sheet.getRangeByIndexes(legendTop, 1, 1, LEGEND_SAMPLE_COLS).merge();
+    sheet.getRangeByIndexes(legendTop + 1, 1 + LEGEND_WHITE1, 1, LEGEND_GRAY).merge();
+    sheet.getRangeByIndexes(legendTop + 2, 1, 1, LEGEND_SAMPLE_COLS).merge();
+    legendTextRange = sheet.getRangeByIndexes(legendTop, 1 + LEGEND_SAMPLE_COLS, LEGEND_ROWS, days.length - LEGEND_SAMPLE_COLS);
+  } else if(days.length > 0){
+    // 見本を置く列がないときは、日付列全体を本文セルにする
+    legendTextRange = sheet.getRangeByIndexes(legendTop, 1, LEGEND_ROWS, days.length);
   }
+  if(legendTextRange) legendTextRange.merge();
   var legendRange = sheet.getRangeByIndexes(legendTop, 0, LEGEND_ROWS, nCols);
   legendRange.format.font.size = 9;
   legendRange.format.horizontalAlignment = "Left";
+  if(legendTextRange){
+    legendTextRange.format.wrapText = true;
+    legendTextRange.format.horizontalAlignment = "Center";
+    legendTextRange.format.verticalAlignment = "Center";
+  }
   legendRange.format.borders.getItem("EdgeTop").style = "Continuous";
   legendRange.format.borders.getItem("EdgeTop").weight = "Medium";
   legendRange.format.borders.getItem("EdgeTop").color = "#999999";
@@ -1793,20 +1804,14 @@ async function writeGanttSheet(ctx, model, sheet){
     }
   });
 
-  // 行事・備考等：日付列の縦罫線は消す。中段（本文行）は上下の横罫線も消して、
-  // 罫線のない帯にする。上段・下段との間の罫線は両側のセルで消す必要がある
-  for(var lr2 = 0; lr2 < LEGEND_ROWS; lr2++){
-    sheet.getRangeByIndexes(legendTop + lr2, 1, 1, days.length).format.borders.getItem("InsideVertical").style = "None";
-  }
-  sheet.getRangeByIndexes(legendTop, 1, 1, days.length).format.borders.getItem("EdgeBottom").style = "None";
-  sheet.getRangeByIndexes(legendTop + 1, 1, 1, days.length).format.borders.getItem("EdgeTop").style = "None";
-  sheet.getRangeByIndexes(legendTop + 1, 1, 1, days.length).format.borders.getItem("EdgeBottom").style = "None";
-  sheet.getRangeByIndexes(legendTop + 2, 1, 1, days.length).format.borders.getItem("EdgeTop").style = "None";
+  // 行事・備考等：日付列側のボックスは外枠だけ残し、内側の罫線（縦・横）はすべて消す。
+  // 結合セルを途中で切る範囲には指定せず、ボックス全体の範囲に対して一度に指定する
+  var legendBody = sheet.getRangeByIndexes(legendTop, 1, LEGEND_ROWS, days.length);
+  legendBody.format.borders.getItem("InsideHorizontal").style = "None";
+  if(days.length > 1) legendBody.format.borders.getItem("InsideVertical").style = "None";
   if(days.length > LEGEND_SAMPLE_COLS){
-    // 見本セル（灰色）と本文欄には罫線を付けない。灰色の塗りつぶしだけを静かに見せる
+    // 見本セル（灰色）には罫線を付けない。灰色の塗りつぶしだけを静かに見せる
     sheet.getRangeByIndexes(legendTop + 1, 1 + LEGEND_WHITE1, 1, LEGEND_GRAY).format.fill.color = SHADE_FILL;
-    var legendTextRange = sheet.getRangeByIndexes(legendTop + 1, 1 + LEGEND_SAMPLE_COLS, 1, days.length - LEGEND_SAMPLE_COLS);
-    legendTextRange.format.verticalAlignment = "Center";
   }
 
   // 進捗率グラフ（出来高累計％）：A列に％軸ラベル（各行の上端の値）、

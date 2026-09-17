@@ -1410,6 +1410,15 @@ async function drawProgressLineChart(ctx, sheet, L, pctArr, dailyCount){
 
 // 労務者数グラフ（日ごとの人数の棒グラフ）を描く。既存の同名グラフがあれば削除してから描き直す。
 // 値軸はExcelの自動スケールに任せる（最大値が入力次第で変わるため）
+function isExcelApiSupported(version){
+  try{
+    return typeof Office !== "undefined" && !!Office.context && !!Office.context.requirements &&
+      Office.context.requirements.isSetSupported("ExcelApi", version);
+  }catch(err){
+    return false;
+  }
+}
+
 async function drawManpowerChart(ctx, sheet, L, dailyManpower){
   var days = L.days, nCols = L.nCols, colLeft = L.colLeft, COL_W_DAY = L.COL_W_DAY;
 
@@ -1441,6 +1450,15 @@ async function drawManpowerChart(ctx, sheet, L, dailyManpower){
   if(total <= 0) return;
 
   var oldChart = sheet.charts.getItemOrNullObject("manpower-chart");
+  // グラフを枠線（日付列側の6行×日数分の範囲）にぴったり重ねるため、計算値ではなく
+  // Excelに実際に反映された位置・サイズを読む（列幅はピクセル単位に丸められるため、
+  // 計算値だと枠線から少しずれることがある）
+  // （Range.left/top/width/heightはExcelApi 1.10以降。古いExcelでは計算値を使う）
+  var mpFrame = null;
+  if(isExcelApiSupported("1.10")){
+    mpFrame = sheet.getRangeByIndexes(L.manpowerChartTop, 1, L.MANPOWER_CHART_ROWS, days.length);
+    mpFrame.load("left,top,width,height");
+  }
   await ctx.sync();
   if(!oldChart.isNullObject) oldChart.delete();
   await ctx.sync();
@@ -1461,23 +1479,26 @@ async function drawManpowerChart(ctx, sheet, L, dailyManpower){
     // 値軸は表示しない（各棒の中に数値ラベルを直接表示するので不要）。
     // 軸を消すことで、軸ラベル用の余白がプロットエリアの下・左に残って
     // 棒の底が罫線からずれる問題も避けられる。プロットエリアは
-    // チャート全体にぴったり合わせて、colLeft(1)から日数分の幅で配置する
-    var chartWidth = Math.max(1, days.length * COL_W_DAY);
-    var chartHeight = L.manpowerChartHeight;
+    // チャート全体にぴったり合わせて、枠線の範囲（日付列の左端から日数分）に配置する
+    var hasFrame = !!mpFrame && mpFrame.width > 0 && mpFrame.height > 0;
+    var chartLeft = hasFrame ? mpFrame.left : colLeft(1);
+    var chartTop = hasFrame ? mpFrame.top : L.manpowerBlockTop;
+    var chartWidth = hasFrame ? mpFrame.width : Math.max(1, days.length * COL_W_DAY);
+    var chartHeight = hasFrame ? mpFrame.height : L.manpowerChartHeight;
 
     var mpChart = sheet.charts.add(Excel.ChartType.columnClustered, dataRange, Excel.ChartSeriesBy.columns);
     mpChart.name = "manpower-chart";
     mpChart.plotVisibleOnly = false;
-    mpChart.left = colLeft(1);
-    mpChart.top = L.manpowerBlockTop;
+    mpChart.left = chartLeft;
+    mpChart.top = chartTop;
     mpChart.width = chartWidth;
     mpChart.height = chartHeight;
     mpChart.title.visible = false;
     mpChart.legend.visible = false;
     mpChart.format.fill.clear();
-    // グラフエリアの枠線（図形の枠線）は白にする
+    // グラフエリアの枠線（図形の枠線）は、シートの枠線と同じ薄い灰色にして重ねる
     mpChart.format.border.lineStyle = Excel.ChartLineStyle.continuous;
-    mpChart.format.border.color = "#FFFFFF";
+    mpChart.format.border.color = GRID_LINE;
 
     var catAxis = mpChart.axes.categoryAxis;
     catAxis.visible = false;

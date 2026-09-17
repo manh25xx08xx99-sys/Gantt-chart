@@ -47,7 +47,14 @@ main{padding:10px 10px 14px;}
 }
 .special-holiday-controls{display:flex;gap:6px;align-items:center;}
 .special-holiday-label{flex:1;font:inherit;font-size:11px;font-weight:600;color:#333;}
-.special-holiday-controls input{min-width:0;flex:0 0 auto;width:96px;font:inherit;font-size:10px;padding:2px 3px;}
+.special-holiday-controls .date-field{
+  flex:0 0 auto;width:104px;border:1px solid #767676;border-radius:2px;background:#fff;padding:0 3px 0 0;
+}
+.special-holiday-controls input[data-date-text]{
+  width:100%;border:none;background:transparent;font:inherit;font-size:10px;padding:3px 3px;
+}
+.special-holiday-controls input[data-date-text]:focus{outline:none;}
+.special-holiday-controls .date-field:focus-within{outline:2px solid var(--accent);outline-offset:-1px;}
 .special-holiday-controls::after{content:"";flex:1;}.special-holiday-controls button{
   flex:0 0 auto;border:1px solid var(--accent);border-radius:4px;
   background:var(--accent-soft);color:var(--accent);padding:5px 7px;font:inherit;font-size:10.5px;cursor:pointer;
@@ -91,7 +98,20 @@ table.sched th{
 .c-name{width:15%;}
 .c-date{width:13%;}
 .c-days{width:8%;}
-td.date-cell input{width:100%;font-size:10px;}
+/* 日付欄：文字欄（YYYY/MM/DD）＋カレンダーアイコン。アイコンの上に透明な<input type="date">を
+   重ね、そのカレンダーボタンを全面に広げて、アイコンをクリックすると標準のカレンダーが開くようにする */
+.date-field{display:flex;align-items:center;min-width:0;}
+.date-field input[data-date-text]{flex:1 1 auto;min-width:0;}
+.date-pick{position:relative;flex:0 0 auto;width:12px;height:12px;margin-left:1px;color:#444;}
+.date-pick svg{display:block;width:12px;height:12px;pointer-events:none;}
+.date-field input[type="date"].date-picker-proxy{
+  position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;border:0;
+  opacity:0;cursor:pointer;background:transparent;
+}
+.date-picker-proxy::-webkit-calendar-picker-indicator{
+  position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;cursor:pointer;
+}
+td.date-cell input[data-date-text]{width:100%;font-size:10px;}
 .c-note{width:26%;}
 .c-color{width:19%;}
 .c-mptotal{width:8%;}

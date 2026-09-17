@@ -20,8 +20,15 @@ function fromISODate(s){ // "YYYY-MM-DD" → 正午のDate（無効ならnull）
   var d = noonDate(+m[1], +m[2] - 1, +m[3]);
   return isNaN(d) ? null : d;
 }
-function parseDateInput(s){ // YYYY-MM-DD または日本式 YYYY/MM/DD
-  var m = /^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/.exec(String(s || "").trim());
+// 手入力の日付を読む。YYYY/MM/DD（日本式）・YYYY-MM-DD・YYYYMMDD・YYYY年M月D日 に対応し、
+// 日本語入力（IME）で入った全角の数字・記号も受け付ける
+function parseDateInput(s){
+  var str = String(s || "").trim()
+    .replace(/[０-９]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+    .replace(/[／]/g, "/").replace(/[－ー−]/g, "-").replace(/[．]/g, ".");
+  var m = /^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/.exec(str) ||
+          /^(\d{4})年(\d{1,2})月(\d{1,2})日?$/.exec(str) ||
+          /^(\d{4})(\d{2})(\d{2})$/.exec(str);
   if(!m) return null;
   var d = noonDate(+m[1], +m[2] - 1, +m[3]);
   // Date constructor rolls invalid dates into the following month; reject them.
@@ -610,10 +617,11 @@ function loadState(){
 function addSpecialHoliday(){
   var input = document.getElementById("specialHolidayDate");
   if(!input) return;
-  // <input type="date"> の値は必ず YYYY-MM-DD 形式で返る
-  var d = input.value ? fromISODate(input.value) : null;
+  var d = syncDateField(input);
   if(!d){
-    setStatus("特別休業日の日付を指定してください。", true);
+    setStatus(input.value.trim()
+      ? "日付は yyyy/mm/dd の形式で入力してください（例：2026/09/16）。"
+      : "特別休業日の日付を指定してください。", true);
     return;
   }
   var iso = toISODate(d);
@@ -630,6 +638,7 @@ function addSpecialHoliday(){
   renderRows(); // 稼働日の扱いが変わるので所要日数の表示を作り直す
   setStatus(formatJapaneseDate(d) + "（" + WEEKDAY_JP[d.getDay()] + "）を特別休業日にしました。所要日数を保つため、該当する作業の終了日を自動で調整しました。🔄 ガントチャートを生成し直すと反映されます。");
   input.value = "";
+  syncDateField(input);
 }
 function removeSpecialHoliday(iso){
   var oldHolidays = specialHolidays.slice();
@@ -680,6 +689,54 @@ function rowById(id){
   return null;
 }
 
+// ---- 日付欄（日本式 YYYY/MM/DD で表示） ----
+// <input type="date"> の表示形式はWindowsの言語設定で決まり（例：dd/mm/yyyy）、ページ側からは
+// 変えられない。そこで表示と手入力は普通の文字欄で行い、カレンダーアイコンの上に透明な
+// <input type="date"> を重ねて、そのカレンダーから選べるようにする
+var CALENDAR_ICON_SVG =
+  '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
+    '<rect x="2" y="3" width="12" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/>' +
+    '<path d="M2 6.5h12M5.2 1.6v2.8M10.8 1.6v2.8" fill="none" stroke="currentColor" stroke-width="1.3"/>' +
+    '<path d="M4.6 9.2h1.6M7.2 9.2h1.6M9.8 9.2h1.6M4.6 11.7h1.6M7.2 11.7h1.6" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+  "</svg>";
+// attrs: 文字欄に付ける属性（class="start-input" / id="…" など）、iso: 表示する日付（YYYY-MM-DD）
+function dateFieldHtml(attrs, iso){
+  var d = fromISODate(iso);
+  return '<div class="date-field">' +
+    '<input type="text" ' + attrs + ' data-date-text value="' + (d ? formatJapaneseDate(d) : "") + '" placeholder="yyyy/mm/dd" autocomplete="off" spellcheck="false">' +
+    '<span class="date-pick">' + CALENDAR_ICON_SVG +
+      '<input type="date" class="date-picker-proxy" tabindex="-1" title="カレンダーから選ぶ" aria-label="カレンダーから選ぶ" value="' + (d ? toISODate(d) : "") + '">' +
+    "</span>" +
+  "</div>";
+}
+// 文字欄の内容を日本式に整え、カレンダー側の値もそろえる。読めない入力ならnullを返す
+function syncDateField(textInput){
+  var d = parseDateInput(textInput.value);
+  var field = textInput.closest(".date-field");
+  var proxy = field && field.querySelector(".date-picker-proxy");
+  if(d){
+    textInput.value = formatJapaneseDate(d);
+    if(proxy) proxy.value = toISODate(d);
+  }else if(!textInput.value.trim() && proxy){
+    proxy.value = "";
+  }
+  return d;
+}
+function bindDatePickers(){
+  // カレンダーで選んだ日付を文字欄に書き戻し、文字欄のchangeとして通常の処理に流す
+  document.addEventListener("change", function(e){
+    var proxy = e.target;
+    if(!proxy.classList || !proxy.classList.contains("date-picker-proxy")) return;
+    var d = fromISODate(proxy.value);
+    var text = proxy.closest(".date-field").querySelector("[data-date-text]");
+    if(!d || !text) return;
+    text.value = formatJapaneseDate(d);
+    text.dispatchEvent(new Event("change", { bubbles: true }));
+    text.focus();
+    try{ text.select(); }catch(err){}
+  }, true);
+}
+
 function renderRows(){
   var body = document.getElementById("schedBody");
   if(!body) return;
@@ -702,8 +759,8 @@ function renderRows(){
         '<span class="row-drag-handle" title="ドラッグで並べ替え">⠿</span>' +
         '<input type="text" class="name-input" value="' + escHtml(r.name) + '" placeholder="作業内容">' +
       '</div></td>' +
-      '<td class="date-cell"><input type="date" class="start-input" value="' + escHtml(r.start) + '"></td>' +
-      '<td class="date-cell"><input type="date" class="end-input" value="' + escHtml(r.end) + '"></td>' +
+      '<td class="date-cell">' + dateFieldHtml('class="start-input"', r.start) + '</td>' +
+      '<td class="date-cell">' + dateFieldHtml('class="end-input"', r.end) + '</td>' +
       '<td><input type="number" min="1" class="days-input" value="' + workingDaysOf(r) + '" placeholder="－" title="日数を入力すると、開始日から自動で終了日を計算します"></td>' +
       '<td><input type="text" class="note-input" value="' + escHtml(r.note) + '" placeholder="備考"></td>' +
       '<td class="color-cell"><div class="color-dots">' + dots + "</div></td>" +
@@ -847,9 +904,16 @@ function bindTableEvents(){
     if(!r) return;
 
     if(t.classList.contains("start-input") || t.classList.contains("end-input")){
-      // <input type="date"> の値は必ず YYYY-MM-DD 形式で返る
-      var inputDate = t.value ? fromISODate(t.value) : null;
       var dateKey = t.classList.contains("start-input") ? "start" : "end";
+      var inputDate = syncDateField(t);
+      if(!inputDate && t.value.trim()){
+        // 読めない入力は元の日付に戻す
+        var prev = fromISODate(r[dateKey]);
+        t.value = prev ? formatJapaneseDate(prev) : "";
+        syncDateField(t);
+        setStatus("日付は yyyy/mm/dd の形式で入力してください（例：2026/09/16）。", true);
+        return;
+      }
       r[dateKey] = inputDate ? toISODate(inputDate) : "";
       refreshDaysInput(tr);
       refreshMpWarning(tr);
@@ -863,8 +927,10 @@ function bindTableEvents(){
         if(end){
           r.end = toISODate(end);
           var endInput = tr.querySelector(".end-input");
-          // <input type="date"> はYYYY-MM-DD形式しか受け付けない（YYYY/MM/DDだと空欄になる）
-          if(endInput) endInput.value = toISODate(end);
+          if(endInput){
+            endInput.value = formatJapaneseDate(end);
+            syncDateField(endInput);
+          }
         }
       }
       refreshMpWarning(tr);
@@ -2060,6 +2126,7 @@ function initUI(info){
   }
   bindTableEvents();
   bindTableKeyboardNav();
+  bindDatePickers();
   bindRowDrag();
   renderRows();
   renderSpecialHolidays();

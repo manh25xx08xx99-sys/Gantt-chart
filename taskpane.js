@@ -1309,6 +1309,10 @@ async function drawProgressLineChart(ctx, sheet, L, pctArr, dailyCount){
     if(dailyCount[dw] > 0){ lastWorkIdx = dw; break; }
   }
   if(lastWorkIdx < 0) return;
+  // 最初の稼働日。表示期間の先頭に作業のない日が並ぶ場合（開始月の1日から表示するなど）、
+  // そこに0％の水平線を引かないよう、グラフ自体をこの日の列から始める
+  var firstWorkIdx = 0;
+  while(firstWorkIdx < lastWorkIdx && !(dailyCount[firstWorkIdx] > 0)) firstWorkIdx++;
 
   var oldChart = sheet.charts.getItemOrNullObject("progress-chart");
   var oldDot = sheet.shapes.getItemOrNullObject("progress-line-end-dot");
@@ -1318,28 +1322,31 @@ async function drawProgressLineChart(ctx, sheet, L, pctArr, dailyCount){
   await ctx.sync();
 
   try{
-    // 先頭に「0％」の起点を1つ追加する（実際の日数より1点多い）。
+    // グラフは最初の稼働日の列から表示期間の最後までを対象にする（span日分）。
+    // 先頭に「0％」の起点を1つ追加する（対象の日数より1点多い）。
     // カテゴリ数を日数+1にして、グラフ全体を半列分左にずらすことで、
-    // 起点は1列目の左端（＝マス目の左下角＝0％）に、各日の点はその日の列の
+    // 起点は最初の稼働日の列の左端（＝マス目の左下角＝0％）に、各日の点はその日の列の
     // 右端（＝翌日との境目の角）に来るようにする。稼働最終日より後ろは空白にして、
     // 「プロットしない」設定でそこで線が自然に止まるようにする
     var helperCol = nCols + 2;
-    var helperRows = lastWorkIdx + 1;
-    var dataRange = sheet.getRangeByIndexes(progressTop, helperCol, days.length + 1, 1);
-    dataRange.clear(Excel.ClearApplyTo.contents);
-    var valuesToWrite = [[0]].concat(pctArr.slice(0, helperRows).map(function(v){ return [v]; }));
+    var span = days.length - firstWorkIdx;
+    // 前回の描画（期間が長かった場合など）の値が残らないよう、最大範囲を先に消しておく
+    var helperAll = sheet.getRangeByIndexes(progressTop, helperCol, days.length + 1, 1);
+    helperAll.clear(Excel.ClearApplyTo.contents);
+    var dataRange = sheet.getRangeByIndexes(progressTop, helperCol, span + 1, 1);
+    var valuesToWrite = [[0]].concat(pctArr.slice(firstWorkIdx, lastWorkIdx + 1).map(function(v){ return [v]; }));
     sheet.getRangeByIndexes(progressTop, helperCol, valuesToWrite.length, 1).values = valuesToWrite;
     // 一部の行だけでなく列全体を指定して確実に非表示にする
-    dataRange.getEntireColumn().columnHidden = true;
+    helperAll.getEntireColumn().columnHidden = true;
 
-    var chartWidth = Math.max(1, (days.length + 1) * COL_W_DAY);
+    var chartWidth = Math.max(1, (span + 1) * COL_W_DAY);
     var chartHeight = progressChartHeight;
 
     var progChart = sheet.charts.add(Excel.ChartType.line, dataRange, Excel.ChartSeriesBy.columns);
     progChart.name = "progress-chart";
     progChart.plotVisibleOnly = false; // データ列を非表示にしても描画されるようにする
     progChart.displayBlanksAs = Excel.ChartDisplayBlanksAs.notPlotted;
-    progChart.left = colLeft(1) - COL_W_DAY / 2;
+    progChart.left = colLeft(1 + firstWorkIdx) - COL_W_DAY / 2;
     progChart.top = progressBlockTop;
     progChart.width = chartWidth;
     progChart.height = chartHeight;
@@ -1362,7 +1369,7 @@ async function drawProgressLineChart(ctx, sheet, L, pctArr, dailyCount){
 
     var progSeries = progChart.series.getItemAt(0);
     // 先頭セルが数値の0なので自動判定でも範囲全体が系列になるが、
-    // 念のため日数+1行ぴったりを明示しておく（末尾の空白セルは系列に残るため、
+    // 念のため対象日数+1行ぴったりを明示しておく（末尾の空白セルは系列に残るため、
     // 「プロットしない」で稼働最終日に線が止まる動きはそのまま）
     progSeries.setValues(dataRange);
     progSeries.name = "累計進捗率";

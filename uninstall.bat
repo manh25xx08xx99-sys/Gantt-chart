@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 rem Go Add-in "工程表ツール" khoi Excel tren may nay (khong can Node.js).
-rem Xoa ca tac vu tu dong cap nhat manifest.xml.
+rem Xoa ca tac vu tu dong cap nhat manifest.xml va thu muc cai dat %LOCALAPPDATA%\GanttAddin.
 schtasks /delete /tn "GanttAddin_AutoUpdateManifest" /f >nul 2>&1
 if errorlevel 1 (
   echo Khong co tac vu tu dong cap nhat (hoac da xoa truoc do^).
@@ -13,5 +13,9 @@ if errorlevel 1 (
   echo Khong xoa duoc dang ky Add-in (co the da go truoc do^).
 ) else (
   echo Da xoa dang ky. Khoi dong lai Excel de an hoan toan.
+)
+if exist "%LOCALAPPDATA%\GanttAddin\" (
+  rd /s /q "%LOCALAPPDATA%\GanttAddin"
+  echo Da xoa thu muc cai dat.
 )
 pause

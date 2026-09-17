@@ -863,7 +863,8 @@ function bindTableEvents(){
         if(end){
           r.end = toISODate(end);
           var endInput = tr.querySelector(".end-input");
-          if(endInput) endInput.value = formatJapaneseDate(end);
+          // <input type="date"> はYYYY-MM-DD形式しか受け付けない（YYYY/MM/DDだと空欄になる）
+          if(endInput) endInput.value = toISODate(end);
         }
       }
       refreshMpWarning(tr);
@@ -888,6 +889,78 @@ function bindTableEvents(){
       saveState();
     } else if(e.target.closest(".del-btn")){
       removeRow(r.id);
+    }
+  });
+}
+
+// ---- 入力表のキーボード移動（Excelのように矢印キーで隣の入力欄へ移動する） ----
+// ↑↓：同じ列の上下の行へ（数値・日付欄の値の増減には使わない）
+// ←→：左右の欄へ。文字の欄は、カーソルが先頭／末尾にあるか全選択のときだけ移動し、
+//      文字の途中ではこれまで通りカーソル移動に使う
+// 色・削除ボタンは入力欄ではないので移動先に含めない
+var NAV_FIELDS = [
+  { key: "name", selector: ".name-input" },
+  { key: "start", selector: ".start-input" },
+  { key: "end", selector: ".end-input" },
+  { key: "days", selector: ".days-input" },
+  { key: "note", selector: ".note-input" },
+  { key: "mptotal", selector: ".mp-total-input", mpOnly: true },
+  { key: "mpdist", selector: ".mp-dist-select", mpOnly: true },
+];
+function navFields(){
+  return NAV_FIELDS.filter(function(f){ return manpowerMode || !f.mpOnly; });
+}
+function navCaretAtEdge(el, dir){
+  var start, end;
+  try{ start = el.selectionStart; end = el.selectionEnd; }catch(err){ return true; }
+  if(typeof start !== "number") return true;
+  var len = el.value.length;
+  if(start === 0 && end === len) return true; // 全選択（矢印キーで移動してきた直後など）
+  if(start !== end) return false;
+  return dir < 0 ? start === 0 : start === len;
+}
+function navSiblingRow(tr, dir){
+  var el = tr;
+  do{ el = dir < 0 ? el.previousElementSibling : el.nextElementSibling; }
+  while(el && !(el.matches && el.matches("tr[data-id]")));
+  return el;
+}
+function bindTableKeyboardNav(){
+  var body = document.getElementById("schedBody");
+  if(!body) return;
+  body.addEventListener("keydown", function(e){
+    // 日本語入力の変換中は、矢印キーを変換候補の選択に使うので何もしない
+    if(e.isComposing || e.keyCode === 229) return;
+    // Shift（範囲選択）・Alt+↓（プルダウンを開く）などの組み合わせは標準の動作のまま
+    if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    var dRow = 0, dCol = 0;
+    if(e.key === "ArrowUp") dRow = -1;
+    else if(e.key === "ArrowDown") dRow = 1;
+    else if(e.key === "ArrowLeft") dCol = -1;
+    else if(e.key === "ArrowRight") dCol = 1;
+    else return;
+
+    var fields = navFields();
+    var t = e.target;
+    var colIdx = -1;
+    for(var i = 0; i < fields.length; i++){
+      if(t.matches && t.matches(fields[i].selector)){ colIdx = i; break; }
+    }
+    if(colIdx === -1) return;
+    var tr = t.closest("tr[data-id]");
+    if(!tr) return;
+    if(dCol !== 0 && t.type === "text" && !navCaretAtEdge(t, dCol)) return;
+
+    e.preventDefault();
+    var targetTr = dRow !== 0 ? navSiblingRow(tr, dRow) : tr;
+    var targetIdx = colIdx + dCol;
+    if(!targetTr || targetIdx < 0 || targetIdx >= fields.length) return;
+    var target = targetTr.querySelector(fields[targetIdx].selector);
+    if(!target) return;
+    target.focus();
+    // 移動先は中身を全選択しておき、そのまま入力すると上書きできるようにする（Excelと同じ）
+    if(target.tagName === "INPUT" && target.type !== "date"){
+      try{ target.select(); }catch(err){}
     }
   });
 }
@@ -1986,6 +2059,7 @@ function initUI(info){
     });
   }
   bindTableEvents();
+  bindTableKeyboardNav();
   bindRowDrag();
   renderRows();
   renderSpecialHolidays();

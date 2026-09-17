@@ -1475,7 +1475,9 @@ async function drawManpowerChart(ctx, sheet, L, dailyManpower){
     mpChart.title.visible = false;
     mpChart.legend.visible = false;
     mpChart.format.fill.clear();
-    mpChart.format.border.clear();
+    // グラフエリアの枠線（図形の枠線）は白にする
+    mpChart.format.border.lineStyle = Excel.ChartLineStyle.continuous;
+    mpChart.format.border.color = "#FFFFFF";
 
     var catAxis = mpChart.axes.categoryAxis;
     catAxis.visible = false;

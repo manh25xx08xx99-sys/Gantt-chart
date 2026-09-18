@@ -14,6 +14,9 @@ const MIME = {
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".md": "text/markdown; charset=utf-8",
+  ".jpg": "image/jpeg",
+  ".mp4": "video/mp4",
+  ".zip": "application/zip",
 };
 
 const server = http.createServer((req, res) => {

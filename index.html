@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工程表ツール｜Excelで工程表を自動作成するアドイン</title>
+<meta name="description" content="作業を入力するだけで、施工計画書の工程表（ガントチャート）をExcelに自動作成。進捗率グラフ・労務者数グラフにも対応した無料のExcelアドインです。">
+<link rel="icon" type="image/png" href="assets/icon-32.png">
+<style>
+  :root{
+    --ink:#1c1c1c; --ink-2:#4a4640; --muted:#7a7368;
+    --line:#e3ddd1; --panel:#faf8f4; --card:#ffffff; --soft:#f5f1e9;
+    --accent:#8a5a3b; --accent-2:#a8734f; --accent-soft:#f4ede3;
+    --dark:#1c1c1c; --dark-2:#2a2825;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--panel); color:var(--ink);
+    font-family:"Yu Gothic UI","Yu Gothic","Hiragino Sans","Noto Sans JP","Segoe UI",system-ui,sans-serif;
+    font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  img,video{max-width:100%; display:block;}
+  a{color:var(--accent);}
+  .wrap{max-width:1120px; margin:0 auto; padding:0 20px;}
+
+  /* ヘッダー */
+  .top{position:sticky; top:0; z-index:10; background:rgba(28,28,28,.94); backdrop-filter:blur(6px); color:#fff;}
+  .top .wrap{display:flex; align-items:center; gap:18px; height:60px;}
+  .brand{display:flex; align-items:center; gap:10px; color:#fff; text-decoration:none; font-weight:700; letter-spacing:.02em; white-space:nowrap;}
+  .brand svg{width:30px; height:30px; flex:none;}
+  .nav{display:flex; gap:18px; margin-left:auto; font-size:14px;}
+  .nav a{color:#d9d3c8; text-decoration:none;}
+  .nav a:hover{color:#fff;}
+  .lang{display:flex; border:1px solid #4d4a45; border-radius:999px; overflow:hidden; flex:none;}
+  .lang button{border:0; background:transparent; color:#cfc8bb; font:inherit; font-size:13px; padding:5px 12px; cursor:pointer;}
+  .lang button[aria-pressed="true"]{background:var(--accent); color:#fff;}
+
+  /* ヒーロー */
+  .hero{background:linear-gradient(180deg,var(--dark) 0%,var(--dark-2) 100%); color:#fff; padding:64px 0 0; overflow:hidden;}
+  .hero-grid{display:grid; grid-template-columns:1fr; gap:40px; text-align:center;}
+  .kicker{display:inline-block; font-size:13px; letter-spacing:.08em; color:#e2cdb0; border:1px solid #5b4a3b; border-radius:999px; padding:4px 14px;}
+  .hero h1{font-size:clamp(34px,6vw,56px); line-height:1.2; margin:18px 0 12px; letter-spacing:.02em;}
+  .hero p.lead{font-size:clamp(16px,2.2vw,19px); color:#d8d2c7; max-width:720px; margin:0 auto;}
+  .cta{display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin:30px 0 10px;}
+  .btn{display:inline-flex; align-items:center; gap:10px; text-decoration:none; font-weight:700; border-radius:10px; padding:14px 26px; font-size:16px; transition:transform .12s ease, background .12s ease;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn-primary{background:var(--accent); color:#fff; box-shadow:0 6px 18px rgba(138,90,59,.35);}
+  .btn-primary:hover{background:var(--accent-2);}
+  .btn-ghost{color:#fff; border:1px solid #5d5953;}
+  .btn-ghost:hover{background:#34312d;}
+  .btn svg{width:20px; height:20px;}
+  .meta{font-size:13px; color:#a9a296;}
+  .hero-shot{margin:44px auto 0; width:100%; max-width:1040px; height:auto; border-radius:12px 12px 0 0; overflow:hidden; box-shadow:0 -4px 40px rgba(0,0,0,.45); border:1px solid #3a3733; border-bottom:0;}
+
+  section{padding:72px 0;}
+  section.alt{background:var(--soft);}
+  .sec-head{text-align:center; max-width:760px; margin:0 auto 38px;}
+  .sec-head h2{font-size:clamp(26px,3.6vw,34px); line-height:1.3; margin:0 0 10px;}
+  .sec-head p{color:var(--ink-2); margin:0;}
+
+  /* 動画 */
+  .video-box{max-width:960px; margin:0 auto; border-radius:var(--radius); overflow:hidden; background:#000; box-shadow:0 10px 30px rgba(0,0,0,.18);}
+  .video-box video{width:100%; aspect-ratio:16/9; background:#000;}
+
+  /* 機能 */
+  .features{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px;}
+  .feature{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:22px 22px 20px;}
+  .feature .ic{width:42px; height:42px; border-radius:10px; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; margin-bottom:12px;}
+  .feature .ic svg{width:22px; height:22px;}
+  .feature h3{margin:0 0 6px; font-size:17px; line-height:1.4;}
+  .feature p{margin:0; color:var(--ink-2); font-size:14.5px;}
+
+  /* 画面 */
+  .shots{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:22px;}
+  .shot{margin:0; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+  .shots{align-items:start;}
+  .shot img{width:100%; height:auto; border-bottom:1px solid var(--line);}
+  .shot figcaption{padding:12px 16px; font-size:14px; color:var(--ink-2);}
+
+  /* インストール */
+  .install{display:grid; grid-template-columns:1.4fr 1fr; gap:26px; align-items:start;}
+  .steps{list-style:none; margin:0; padding:0; counter-reset:step;}
+  .steps li{counter-increment:step; position:relative; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px 18px 70px; margin-bottom:12px;}
+  .steps li::before{content:counter(step); position:absolute; left:20px; top:18px; width:34px; height:34px; border-radius:50%; background:var(--accent); color:#fff; font-weight:700; display:grid; place-items:center;}
+  .steps b{display:block; margin-bottom:2px;}
+  .steps span{color:var(--ink-2); font-size:14.5px;}
+  .side{display:grid; gap:14px;}
+  .box{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px;}
+  .box h3{margin:0 0 8px; font-size:16px;}
+  .box ul{margin:0; padding-left:1.2em; color:var(--ink-2); font-size:14.5px;}
+  .box p{margin:0 0 12px; color:var(--ink-2); font-size:14.5px;}
+  .box .btn{padding:12px 20px; font-size:15px;}
+  kbd{font-family:inherit; font-size:.92em; background:var(--soft); border:1px solid var(--line); border-radius:5px; padding:0 6px;}
+
+  /* FAQ */
+  .faq{max-width:820px; margin:0 auto;}
+  .faq details{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:0 20px; margin-bottom:10px;}
+  .faq summary{cursor:pointer; font-weight:700; padding:16px 0; list-style:none; display:flex; justify-content:space-between; gap:12px;}
+  .faq summary::-webkit-details-marker{display:none;}
+  .faq summary::after{content:"+"; color:var(--accent); font-size:22px; line-height:1;}
+  .faq details[open] summary::after{content:"−";}
+  .faq details p{margin:0 0 16px; color:var(--ink-2);}
+
+  footer{background:var(--dark); color:#a9a296; font-size:14px; padding:30px 0;}
+  footer .wrap{display:flex; flex-wrap:wrap; gap:10px 24px; justify-content:space-between; align-items:center;}
+  footer a{color:#d9d3c8;}
+
+  @media (max-width:860px){
+    .nav{display:none;}
+    .lang{margin-left:auto;}
+    .install{grid-template-columns:1fr;}
+    section{padding:56px 0;}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="10" fill="#000"/><g fill="#fff"><rect x="12" y="40" width="7" height="12" rx="1"/><rect x="23" y="34" width="7" height="18" rx="1"/><rect x="34" y="37" width="7" height="15" rx="1"/><rect x="45" y="28" width="7" height="24" rx="1"/></g><path d="M11 33 L24 22 L33 27 L49 13" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 11 L52 10 L51 20" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>工程表ツール</span>
+    </a>
+    <nav class="nav">
+      <a href="#features" data-i18n="nav_features">機能</a>
+      <a href="#video" data-i18n="nav_video">紹介動画</a>
+      <a href="#install" data-i18n="nav_install">インストール</a>
+      <a href="#faq" data-i18n="nav_faq">よくある質問</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="ja" aria-pressed="true">日本語</button>
+      <button type="button" data-lang="vi" aria-pressed="false">Tiếng Việt</button>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="kicker" data-i18n="kicker">Excel アドイン ・ 無料</span>
+      <h1 data-i18n="h1">工程表を、入力するだけで。</h1>
+      <p class="lead" data-i18n="lead">作業内容と日付を入れて「生成」を押すだけで、施工計画書の工程表（ガントチャート）をExcelに自動作成。休業日の除外、進捗率グラフ、労務者数グラフまで一度に仕上がります。</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="site/gantt-tool-installer.zip" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
+          <span data-i18n="cta_download">インストーラーをダウンロード</span>
+        </a>
+        <a class="btn btn-ghost" href="#video">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+          <span data-i18n="cta_video">紹介動画を見る</span>
+        </a>
+      </div>
+      <div class="meta" data-i18n="meta">Windows版 Excel 用 ・ バージョン 1.3 ・ ZIP 約3KB</div>
+    </div>
+  </div>
+  <div class="wrap">
+    <img class="hero-shot" src="site/shot-main.jpg" width="1600" height="636" alt="工程表ツールで作成したガントチャート、進捗率グラフ、労務者数グラフと入力画面">
+  </div>
+</section>
+
+<section id="video">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="video_h">2分半でわかる使い方</h2>
+      <p data-i18n="video_p">アドインの起動から、作業の入力、ガントチャートの生成、グラフ、印刷プレビューまでを実際の画面で紹介します。</p>
+    </div>
+    <div class="video-box">
+      <video controls preload="none" poster="site/review-poster.jpg" playsinline>
+        <source src="site/review.mp4" type="video/mp4">
+      </video>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="feat_h">主な機能</h2>
+      <p data-i18n="feat_p">工程表づくりの手間を、入力するだけの作業に。</p>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M7 12h11M5 18h7"/></svg></div>
+        <h3 data-i18n="f1_h">ガントチャートを自動作成</h3>
+        <p data-i18n="f1_p">作業内容・開始日・所要日数を入れて「ガントチャートを生成」を押すだけ。専用シートに工程表を作ります。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l6 0"/></svg></div>
+        <h3 data-i18n="f2_h">休業日を自動で除外</h3>
+        <p data-i18n="f2_p">日曜・祝日、土曜（設定可）、登録した特別休業日を除いて終了日を計算。休みの日は灰色で表示します。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19l5-6 4 3 7-9"/><circle cx="20" cy="7" r="1.5" fill="currentColor"/></svg></div>
+        <h3 data-i18n="f3_h">進捗率グラフ</h3>
+        <p data-i18n="f3_p">出来高累計（％）の折れ線グラフを工程表の下に自動で追加します。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V12M10 20V8M15 20V11M20 20V5"/></svg></div>
+        <h3 data-i18n="f4_h">労務者数グラフ</h3>
+        <p data-i18n="f4_p">総人工数を「均等・増加・減少」で日ごとに自動配分。Excel上で人数を直接修正することもできます。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 12l4-4M3 12l4 4M21 12l-4-4M21 12l-4 4"/></svg></div>
+        <h3 data-i18n="f5_h">日付の表示期間を選べる</h3>
+        <p data-i18n="f5_p">月全体を表示するかを4種類から選択。工期が短くても、印刷したときに見やすい工程表になります。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11l-3-3M20 17H9l3 3"/></svg></div>
+        <h3 data-i18n="f6_h">Excelとの食い違いを確認</h3>
+        <p data-i18n="f6_p">作業ウィンドウとExcelの内容が違うときは、どちらに合わせるかを確認してから反映します。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 14h7M9 17h5"/></svg></div>
+        <h3 data-i18n="f7_h">ブックごとに保存</h3>
+        <p data-i18n="f7_p">入力内容は使っているExcelファイルの中に保存。同じファイルを開けば続きから作業できます。</p>
+      </div>
+      <div class="feature">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg></div>
+        <h3 data-i18n="f8_h">自動でアップデート</h3>
+        <p data-i18n="f8_p">一度インストールすれば、毎日自動で最新版に更新。改良点がすぐに反映されます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="shots_h">画面イメージ</h2>
+    </div>
+    <div class="shots">
+      <figure class="shot">
+        <img src="site/shot-input.jpg" width="955" height="757" loading="lazy" alt="作業ウィンドウの入力画面">
+        <figcaption data-i18n="s1">作業ウィンドウ：設定と作業の一覧を入力</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="site/shot-confirm.jpg" width="955" height="757" loading="lazy" alt="Excelに合わせるか、タスクペインに合わせるかの確認画面">
+        <figcaption data-i18n="s2">内容が違うときは、どちらに合わせるかを確認</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="site/shot-period.jpg" width="1100" height="757" loading="lazy" alt="月全体を表示した工程表">
+        <figcaption data-i18n="s3">「開始月・終了月とも月全体」で1日〜月末を表示</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="inst_h">インストール方法</h2>
+      <p data-i18n="inst_p">ダウンロードしてダブルクリックするだけ。管理者権限は不要です。</p>
+    </div>
+    <div class="install">
+      <ol class="steps">
+        <li><b data-i18n="st1_b">ZIPをダウンロードして展開</b><span data-i18n="st1_s">下のボタンからダウンロードし、ZIPを右クリック →［すべて展開］。</span></li>
+        <li><b data-i18n="st2_b">install.bat をダブルクリック</b><span data-i18n="st2_s">「Windows によって PC が保護されました」と表示されたら［詳細情報］→［実行］を押します。</span></li>
+        <li><b data-i18n="st3_b">完了したらキーを押して閉じる</b><span data-i18n="st3_s">install.bat はインストール後に自動で削除されます。</span></li>
+        <li><b data-i18n="st4_b">Excelを開き直して起動</b><span data-i18n="st4_s">Excelをすべて閉じてから開き、［ホーム］→［アドイン］→「工程表作成」を選びます。</span></li>
+      </ol>
+      <div class="side">
+        <div class="box">
+          <h3 data-i18n="dl_h">ダウンロード</h3>
+          <p data-i18n="dl_p">install.bat・uninstall.bat・説明書が入っています。</p>
+          <a class="btn btn-primary" href="site/gantt-tool-installer.zip" download>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
+            <span data-i18n="dl_btn">インストーラー（ZIP）</span>
+          </a>
+        </div>
+        <div class="box">
+          <h3 data-i18n="req_h">動作環境</h3>
+          <ul>
+            <li data-i18n="req1">Windows 10 / 11</li>
+            <li data-i18n="req2">Excel（Microsoft 365 または 2021 以降を推奨）</li>
+            <li data-i18n="req3">インターネット接続（画面を Web から読み込みます）</li>
+            <li data-i18n="req4">Mac版・Web版 Excel は未対応</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h3 data-i18n="un_h">アンインストール</h3>
+          <p data-i18n="un_p">ZIPに入っている uninstall.bat を実行すると、アドインと自動更新を削除します。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="faq_h">よくある質問</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary data-i18n="q1">リボンに「工程表ツール」のボタンが出ません</summary>
+        <p data-i18n="a1">［ホーム］→［アドイン］を開き、「開発者アドイン」の「工程表作成」を選んでください。Excelを起動するたびにこの操作が必要な場合があります。</p>
+      </details>
+      <details>
+        <summary data-i18n="q2">新しいバージョンはどうやって入手しますか？</summary>
+        <p data-i18n="a2">毎日9時とWindowsへのログオン時に自動で最新版になります。反映まで最大10分ほどかかることがあるので、変わらないときはExcelを開き直してください。</p>
+      </details>
+      <details>
+        <summary data-i18n="q3">入力した内容はどこに保存されますか？</summary>
+        <p data-i18n="a3">使っているExcelブックの中に保存されます。ブックを上書き保存すれば、次に開いたときも続きから作業できます。新しいブックでは空の状態から始まります。</p>
+      </details>
+      <details>
+        <summary data-i18n="q4">メールで install.bat を送れません</summary>
+        <p data-i18n="a4">メールでは .bat ファイルが止められることがあります。このページのURLを共有するか、ZIPのまま送ってください。</p>
+      </details>
+      <details>
+        <summary data-i18n="q5">「PCが保護されました」と表示されて実行できません</summary>
+        <p data-i18n="a5">インターネットから入手したファイルに表示されるWindowsの確認画面です。［詳細情報］を押すと［実行］ボタンが表示されます。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span data-i18n="foot">工程表ツール V1.3 ・ Excel アドイン</span>
+    <a href="https://github.com/manh25xx08xx99-sys/Gantt-chart" rel="noopener">GitHub</a>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var VI = {
+    nav_features:"Chức năng", nav_video:"Video", nav_install:"Cài đặt", nav_faq:"Hỏi đáp",
+    kicker:"Add-in Excel ・ Miễn phí",
+    h1:"Lập bảng tiến độ, chỉ cần nhập.",
+    lead:"Chỉ cần nhập công việc, ngày tháng rồi bấm「生成」, add-in sẽ tự tạo bảng tiến độ (biểu đồ Gantt) cho 施工計画書 ngay trong Excel. Tự loại ngày nghỉ, có biểu đồ tiến độ % và biểu đồ nhân lực.",
+    cta_download:"Tải bộ cài đặt", cta_video:"Xem video giới thiệu",
+    meta:"Dành cho Excel trên Windows ・ Phiên bản 1.3 ・ ZIP khoảng 3KB",
+    video_h:"Hướng dẫn sử dụng trong 2 phút rưỡi",
+    video_p:"Từ lúc mở add-in, nhập công việc, tạo biểu đồ Gantt, các biểu đồ cho đến xem trước khi in, quay trên màn hình thật.",
+    feat_h:"Chức năng chính", feat_p:"Việc lập bảng tiến độ giờ chỉ còn là nhập liệu.",
+    f1_h:"Tự tạo biểu đồ Gantt", f1_p:"Nhập tên công việc, ngày bắt đầu, số ngày thi công rồi bấm「ガントチャートを生成」. Bảng tiến độ được tạo trên một sheet riêng.",
+    f2_h:"Tự loại ngày nghỉ", f2_p:"Tính ngày kết thúc không tính Chủ nhật, ngày lễ, thứ Bảy (tùy chọn) và ngày nghỉ đặc biệt đã đăng ký. Ngày nghỉ tô màu xám.",
+    f3_h:"Biểu đồ tiến độ %", f3_p:"Tự thêm đường tiến độ tích lũy (%) ngay dưới bảng tiến độ.",
+    f4_h:"Biểu đồ nhân lực", f4_p:"Tự chia tổng nhân công theo ngày với 3 kiểu: đều, tăng dần, giảm dần. Có thể sửa trực tiếp số người trong Excel.",
+    f5_h:"Chọn khoảng ngày hiển thị", f5_p:"4 kiểu hiển thị theo cả tháng hoặc theo đúng ngày. Công trình ngắn in ra vẫn đẹp.",
+    f6_h:"Kiểm tra khi Excel khác task pane", f6_p:"Khi nội dung task pane và Excel khác nhau, add-in hỏi bạn muốn theo bên nào rồi mới cập nhật.",
+    f7_h:"Lưu theo từng file", f7_p:"Dữ liệu nhập được lưu trong chính file Excel. Mở lại file là làm tiếp được.",
+    f8_h:"Tự động cập nhật", f8_p:"Cài một lần, mỗi ngày tự cập nhật lên bản mới nhất.",
+    shots_h:"Hình ảnh giao diện",
+    s1:"Task pane: nhập cài đặt và danh sách công việc",
+    s2:"Khi nội dung khác nhau, hỏi theo Excel hay theo task pane",
+    s3:"「開始月・終了月とも月全体」hiển thị từ ngày 1 đến cuối tháng",
+    inst_h:"Cách cài đặt", inst_p:"Tải về và nhấp đúp là xong. Không cần quyền quản trị.",
+    st1_b:"Tải ZIP và giải nén", st1_s:"Bấm nút bên dưới để tải, rồi nhấp chuột phải vào ZIP → [Extract All].",
+    st2_b:"Nhấp đúp install.bat", st2_s:"Nếu hiện「Windows protected your PC」thì bấm [More info] → [Run anyway].",
+    st3_b:"Xong thì nhấn phím để đóng", st3_s:"install.bat sẽ tự xóa sau khi cài xong.",
+    st4_b:"Mở lại Excel và khởi động", st4_s:"Đóng hết Excel rồi mở lại, vào [Home] → [Add-ins] →「工程表作成」.",
+    dl_h:"Tải về", dl_p:"Gồm install.bat, uninstall.bat và file hướng dẫn.", dl_btn:"Bộ cài đặt (ZIP)",
+    req_h:"Yêu cầu", req1:"Windows 10 / 11", req2:"Excel (khuyên dùng Microsoft 365 hoặc 2021 trở lên)",
+    req3:"Có kết nối Internet (giao diện được tải từ web)", req4:"Chưa hỗ trợ Excel trên Mac và Excel Web",
+    un_h:"Gỡ cài đặt", un_p:"Chạy uninstall.bat trong file ZIP để gỡ add-in và tắt tự động cập nhật.",
+    faq_h:"Câu hỏi thường gặp",
+    q1:"Không thấy nút「工程表ツール」trên ribbon",
+    a1:"Mở [Home] → [Add-ins], chọn「工程表作成」trong mục Developer Add-ins. Có thể phải làm lại mỗi lần mở Excel.",
+    q2:"Làm sao để có phiên bản mới?",
+    a2:"Add-in tự cập nhật lúc 9 giờ hằng ngày và mỗi lần đăng nhập Windows. Có thể mất tối đa khoảng 10 phút mới thấy thay đổi; nếu chưa thấy hãy mở lại Excel.",
+    q3:"Dữ liệu nhập được lưu ở đâu?",
+    a3:"Trong chính file Excel đang dùng. Lưu file lại thì lần sau mở ra vẫn làm tiếp được. File mới sẽ bắt đầu trống.",
+    q4:"Không gửi được install.bat qua email",
+    a4:"Email thường chặn file .bat. Hãy gửi đường link trang này, hoặc gửi nguyên file ZIP.",
+    q5:"Hiện「Windows protected your PC」và không chạy được",
+    a5:"Đây là màn hình cảnh báo của Windows với file tải từ Internet. Bấm [More info] sẽ thấy nút [Run anyway].",
+    foot:"工程表ツール V1.3 ・ Add-in Excel"
+  };
+  var nodes = document.querySelectorAll("[data-i18n]");
+  var JA = {};
+  nodes.forEach(function(el){ JA[el.getAttribute("data-i18n")] = el.textContent; });
+  var buttons = document.querySelectorAll(".lang button");
+
+  function apply(lang){
+    var dict = lang === "vi" ? VI : JA;
+    nodes.forEach(function(el){
+      var k = el.getAttribute("data-i18n");
+      if(dict[k] != null) el.textContent = dict[k];
+    });
+    document.documentElement.lang = lang;
+    buttons.forEach(function(b){ b.setAttribute("aria-pressed", String(b.getAttribute("data-lang") === lang)); });
+    try{ localStorage.setItem("gantt-site-lang", lang); }catch(e){}
+  }
+  buttons.forEach(function(b){
+    b.addEventListener("click", function(){ apply(b.getAttribute("data-lang")); });
+  });
+  var saved = null;
+  try{ saved = localStorage.getItem("gantt-site-lang"); }catch(e){}
+  var initial = saved || ((navigator.language || "").toLowerCase().indexOf("vi") === 0 ? "vi" : "ja");
+  if(initial !== "ja") apply(initial);
+})();
+</script>
+</body>
+</html>

@@ -1392,6 +1392,7 @@ function generateGantt(){
     });
   }).then(function(){
     setStatus("✅ 「ガントチャート」シートを生成しました（" + model.rows.length + "件）。");
+    logUsage("generate");
   }).catch(function(err){
     var msg = "エラー：" + ((err && err.message) ? err.message : err);
     // err.code は文字列（例："GeneralException"）。数値のときだけ16進で出す
@@ -2132,8 +2133,63 @@ function initUI(info){
   renderSpecialHolidays();
   initColumnResize();
 }
+// ============================================================
+// 利用状況のカウント（Supabase）
+// ・数えるのは「タスクペインを開いた回数」と「ガントチャートを生成した回数」だけ
+// ・送るのは端末ごとの匿名ID・イベント名・バージョン・Officeの種別のみ。
+//   氏名やファイル名、入力した作業内容などは一切送らない
+// ・キーは公開前提のもの。テーブル側で書き込みのみ許可し、読み取り・削除はできない
+// ・送信は投げっぱなし。失敗しても画面には出さず、アドインの動作には影響させない
+// ============================================================
+var USAGE_URL = "https://pwykayxctecgicitwwpl.supabase.co/rest/v1/usage_log";
+var USAGE_KEY = "sb_publishable_wlQ1LPTDm-QmH6JRzqAquQ_ZXYAEe6I";
+var USAGE_VERSION = "20261119a";   // taskpane.html のキャッシュ回避パラメータと合わせる
+var USAGE_ID_KEY = "m5gantt.installId";
+
+function usageUuid(){
+  if(typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  // 古いWebView向けの予備。IDはただの目印なので乱数の質は問わない
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c){
+    var r = Math.random() * 16 | 0;
+    return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+// 端末ごとの匿名ID。個人を特定するものではなく、台数を数えるためだけに使う。
+// ここはブックではなく端末に紐づけたいので localStorage でよい
+function usageInstallId(){
+  try{
+    var id = localStorage.getItem(USAGE_ID_KEY);
+    if(!id){ id = usageUuid(); localStorage.setItem(USAGE_ID_KEY, id); }
+    return id;
+  }catch(err){ return null; }   // localStorageが使えない環境では数えない
+}
+function usageHost(){
+  try{
+    var d = Office.context.diagnostics;
+    return d ? String((d.platform || "") + " " + (d.version || "")).trim().slice(0, 32) : null;
+  }catch(err){ return null; }
+}
+function logUsage(event){
+  try{
+    if(typeof fetch !== "function") return;
+    var id = usageInstallId();
+    if(!id) return;
+    fetch(USAGE_URL, {
+      method: "POST",
+      headers: {
+        "apikey": USAGE_KEY,
+        "Authorization": "Bearer " + USAGE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({ install_id: id, event: event, version: USAGE_VERSION, host: usageHost() }),
+      keepalive: true
+    }).catch(function(){});
+  }catch(err){}
+}
+
 if(typeof Office !== "undefined" && Office.onReady){
-  Office.onReady(function(info){ initUI(info); });
+  Office.onReady(function(info){ initUI(info); logUsage("open"); });
 } else if(typeof document !== "undefined"){
   if(document.readyState === "loading"){
     document.addEventListener("DOMContentLoaded", function(){ initUI(null); });

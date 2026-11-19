@@ -5,3 +5,7 @@ node_modules/
 # ダウンロード用ウェブサイト（GitHub には上げない）
 /index.html
 /site/
+
+# 手元用の資料（GitHub には上げない）
+/*.pdf
+/*.pptx

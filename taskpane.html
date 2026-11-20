@@ -105,7 +105,10 @@
       <tbody id="schedBody"></tbody>
     </table>
     </div>
-    <button type="button" id="addBtn" class="add-row">＋ 作業を追加</button>
+    <div class="row-actions">
+      <button type="button" id="addBtn" class="add-row">＋ 作業を追加</button>
+      <button type="button" id="reshapeBtn" class="add-row" title="全体の期間を変えると、各作業の着手日と所要日数が同じ比率で伸び縮みします">⇔ 全体の期間を変更</button>
+    </div>
 
     <button type="button" id="genBtn" class="primary">🔄 ガントチャートを生成</button>
     <p id="status"></p>
@@ -120,11 +123,43 @@
         <li>休日をまたいで続く作業は、矢印と矢印の間が点線でつながります（点線は休み、矢印は実働日）。</li>
         <li>重要日追加に日付と内容を入れると、◆と内容が工程表に入ります。チップの「│」を押すと、その日にたて線を引く／引かないを切り替えられます。</li>
         <li>進捗線を描くをオンにすると進捗％の欄と基準日の欄が出ます。基準日を決め、各作業の進み具合を％で入れてください。</li>
+        <li>工期がずれたときは「⇔ 全体の期間を変更」で、全作業の着手日と所要日数をまとめて同じ比率で伸び縮みさせられます。</li>
         <li>ガントチャートシートは、生成のたびに作り直されます。</li>
         <li>労務者数グラフを使うをオンにすると人工数入力欄が追加されます。Excelで人数を入力後、再度生成すると入力値を引き継いで進捗率・労務者数グラフを更新します。</li>
       </ul>
     </section>
   </main>
+
+  <div id="reshapeModal" class="confirm-overlay" hidden>
+    <div class="confirm-box reshape-box">
+      <p class="confirm-message" id="reshapeMessage"></p>
+      <label class="reshape-field">
+        <span>新しい全体の開始日</span>
+        <div class="date-field">
+          <input type="text" id="reshapeStart" data-date-text aria-label="新しい全体の開始日" placeholder="yyyy/mm/dd" autocomplete="off" spellcheck="false">
+          <span class="date-pick">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="3" width="12" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M5.2 1.6v2.8M10.8 1.6v2.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.6 9.2h1.6M7.2 9.2h1.6M9.8 9.2h1.6M4.6 11.7h1.6M7.2 11.7h1.6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+            <input type="date" class="date-picker-proxy" tabindex="-1" title="カレンダーから選ぶ" aria-label="カレンダーから選ぶ">
+          </span>
+        </div>
+      </label>
+      <label class="reshape-field">
+        <span>新しい全体の終了日</span>
+        <div class="date-field">
+          <input type="text" id="reshapeEnd" data-date-text aria-label="新しい全体の終了日" placeholder="yyyy/mm/dd" autocomplete="off" spellcheck="false">
+          <span class="date-pick">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="3" width="12" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M5.2 1.6v2.8M10.8 1.6v2.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.6 9.2h1.6M7.2 9.2h1.6M9.8 9.2h1.6M4.6 11.7h1.6M7.2 11.7h1.6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+            <input type="date" class="date-picker-proxy" tabindex="-1" title="カレンダーから選ぶ" aria-label="カレンダーから選ぶ">
+          </span>
+        </div>
+      </label>
+      <p class="reshape-note" id="reshapeNote"></p>
+      <div class="confirm-actions">
+        <button type="button" id="reshapeCancelBtn" class="confirm-btn confirm-btn-cancel">やめる</button>
+        <button type="button" id="reshapeOkBtn" class="confirm-btn confirm-btn-ok">変更する</button>
+      </div>
+    </div>
+  </div>
 
   <div id="confirmModal" class="confirm-overlay" hidden>
     <div class="confirm-box">

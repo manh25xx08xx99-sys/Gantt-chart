@@ -750,6 +750,115 @@ function renderMilestones(){
       '<button type="button" class="ms-del" data-iso="' + m.iso + '" title="この重要日を削除">✕</button></span>';
   }).join("");
 }
+// ---- 全体変形（一括伸縮）----
+// 工期がずれたときに、全作業の着手日と所要日数をまとめて同じ比率で伸び縮みさせる。
+// 「工程さん」の全体変形と同じ考え方で、カレンダー上の日数ではなく稼働日数で計算する：
+//   伸縮率 ＝ 新しい全体稼働日数 ÷ 今の全体稼働日数
+//   各作業の「全体着手日からの稼働日のずれ」と「所要日数」の両方に伸縮率を掛け、
+//   新しい全体着手日から数え直す。休みの増減は addWorkingDays 側が吸収する
+function overallPeriod(){
+  var starts = [], ends = [];
+  rows.forEach(function(r){
+    var s = fromISODate(r.start), e = fromISODate(r.end);
+    if(s && e && e >= s){ starts.push(s.getTime()); ends.push(e.getTime()); }
+  });
+  if(starts.length === 0) return null;
+  return { start: new Date(Math.min.apply(null, starts)), end: new Date(Math.max.apply(null, ends)) };
+}
+// 変形後の各行の日付を計算して返す（実際に書き込む前に内容を確認したいので、計算だけを行う）
+function reshapePlan(newStart, newEnd){
+  var now = overallPeriod();
+  if(!now) return { error: "開始日・終了日が両方入った作業がありません。" };
+  if(!newStart || !newEnd) return { error: "新しい開始日と終了日を入れてください。" };
+  if(newEnd < newStart) return { error: "終了日は開始日より後の日にしてください。" };
+  var totalNow = countWorkingDays(now.start, now.end, workOnSaturday, specialHolidays);
+  var totalNew = countWorkingDays(newStart, newEnd, workOnSaturday, specialHolidays);
+  if(!totalNow) return { error: "今の工期に稼働日がありません。" };
+  if(!totalNew) return { error: "新しい工期に稼働日が1日もありません。休みの設定を確認してください。" };
+  var ratio = totalNew / totalNow;
+  var changes = [];
+  rows.forEach(function(r){
+    var s = fromISODate(r.start), e = fromISODate(r.end);
+    if(!s || !e || e < s) return; // 日付が入っていない作業はそのまま
+    var offsetNow = Math.max(0, countWorkingDays(now.start, s, workOnSaturday, specialHolidays) - 1);
+    var durNow = countWorkingDays(s, e, workOnSaturday, specialHolidays) || 1;
+    var offsetNew = Math.round(offsetNow * ratio);
+    var durNew = Math.max(1, Math.round(durNow * ratio));
+    var ns = addWorkingDays(newStart, offsetNew + 1, workOnSaturday, specialHolidays);
+    if(!ns) return;
+    var ne = addWorkingDays(ns, durNew, workOnSaturday, specialHolidays);
+    if(!ne) return;
+    changes.push({ id: r.id, start: toISODate(ns), end: toISODate(ne) });
+  });
+  return { ratio: ratio, totalNow: totalNow, totalNew: totalNew, changes: changes };
+}
+
+// 全体変形のダイアログ（日付を2つ入れる必要があるので、確認モーダルとは別に用意する）
+function reshapeDialogDates(){
+  return {
+    start: syncDateField(document.getElementById("reshapeStart")),
+    end: syncDateField(document.getElementById("reshapeEnd"))
+  };
+}
+function updateReshapeNote(){
+  var note = document.getElementById("reshapeNote");
+  if(!note) return;
+  var d = reshapeDialogDates();
+  var plan = reshapePlan(d.start, d.end);
+  if(plan.error){
+    note.textContent = plan.error;
+    note.classList.add("warn");
+    return;
+  }
+  note.classList.remove("warn");
+  note.textContent = "稼働日数 " + plan.totalNow + "日 → " + plan.totalNew + "日（伸縮率 " +
+    Math.round(plan.ratio * 100) + "％）。" + plan.changes.length + "件の作業の着手日と所要日数を同じ比率で変更します。";
+}
+function openReshapeDialog(){
+  var now = overallPeriod();
+  if(!now){
+    setStatus("開始日・終了日が両方入った作業がありません。", true);
+    return;
+  }
+  var overlay = document.getElementById("reshapeModal");
+  var msg = document.getElementById("reshapeMessage");
+  var si = document.getElementById("reshapeStart");
+  var ei = document.getElementById("reshapeEnd");
+  if(!overlay || !si || !ei) return;
+  if(msg){
+    msg.textContent = "今の工期は " + formatJapaneseDate(now.start) + " 〜 " + formatJapaneseDate(now.end) +
+      "（稼働 " + countWorkingDays(now.start, now.end, workOnSaturday, specialHolidays) + "日）です。";
+  }
+  si.value = formatJapaneseDate(now.start); syncDateField(si);
+  ei.value = formatJapaneseDate(now.end); syncDateField(ei);
+  updateReshapeNote();
+  overlay.hidden = false;
+  si.focus();
+  try{ si.select(); }catch(err){}
+}
+function closeReshapeDialog(){
+  var overlay = document.getElementById("reshapeModal");
+  if(overlay) overlay.hidden = true;
+}
+function applyReshape(){
+  var d = reshapeDialogDates();
+  var plan = reshapePlan(d.start, d.end);
+  if(plan.error){ updateReshapeNote(); return; }
+  var byId = {};
+  plan.changes.forEach(function(c){ byId[c.id] = c; });
+  rows.forEach(function(r){
+    var c = byId[r.id];
+    if(!c) return;
+    r.start = c.start;
+    r.end = c.end;
+  });
+  saveState();
+  renderRows();
+  closeReshapeDialog();
+  setStatus("全体の期間を " + formatJapaneseDate(d.start) + " 〜 " + formatJapaneseDate(d.end) +
+    " に変更しました（" + plan.changes.length + "件）。🔄 ガントチャートを生成し直すと反映されます。");
+}
+
 // ---- 進捗線 ----
 // 基準日（その日の朝の時点）を縦に貫く線を引き、各作業の行では「実際に終わっている分」の
 // 位置まで線を左右にずらす。予定どおりなら基準日の線と重なり、遅れていれば左、
@@ -2405,6 +2514,20 @@ function initUI(info){
   syncProgressLineUI();
   var addBtn = document.getElementById("addBtn");
   if(addBtn) addBtn.addEventListener("click", addRow);
+  var reshapeBtn = document.getElementById("reshapeBtn");
+  if(reshapeBtn) reshapeBtn.addEventListener("click", openReshapeDialog);
+  var reshapeOkBtn = document.getElementById("reshapeOkBtn");
+  if(reshapeOkBtn) reshapeOkBtn.addEventListener("click", applyReshape);
+  var reshapeCancelBtn = document.getElementById("reshapeCancelBtn");
+  if(reshapeCancelBtn) reshapeCancelBtn.addEventListener("click", closeReshapeDialog);
+  ["reshapeStart", "reshapeEnd"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener("change", updateReshapeNote);
+    el.addEventListener("keydown", function(e){
+      if(e.key === "Enter"){ e.preventDefault(); applyReshape(); }
+    });
+  });
   var genBtn = document.getElementById("genBtn");
   if(genBtn) genBtn.addEventListener("click", generateGantt);
   var addHolidayBtn = document.getElementById("addHolidayBtn");

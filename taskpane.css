@@ -68,6 +68,26 @@ main{padding:10px 10px 14px;}
   border:none;background:transparent;color:#9b3e3e;font:inherit;font-size:12px;line-height:1;cursor:pointer;padding:0;
 }
 .holiday-empty{font-size:10.5px;color:#777;}
+
+/* ---- 重要日（マイルストーン）---- */
+/* この行は内容欄が残り幅を使うので、休日の行のような右側の余白は作らない */
+.ms-controls::after{content:none;}
+.ms-controls .ms-label-input{
+  flex:1 1 auto;min-width:0;
+  border:1px solid #767676;border-radius:2px;background:#fff;color:inherit;
+  font:inherit;font-size:10px;padding:3px 4px;
+}
+.ms-controls .ms-label-input:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+.ms-chip{background:#fbeaea;color:#8c2f2f;}
+.ms-chip .ms-line{
+  border:1px solid #dcbdbd;border-radius:3px;background:#fff;color:#c3b5b5;
+  font:inherit;font-size:10px;line-height:1.1;padding:1px 4px;cursor:pointer;
+}
+.ms-chip .ms-line.on{background:#c62828;border-color:#c62828;color:#fff;}
+.ms-chip .ms-del{
+  border:none;background:transparent;color:#9b3e3e;
+  font:inherit;font-size:12px;line-height:1;padding:0;cursor:pointer;
+}
 .sched-wrap{overflow-x:hidden;max-width:100%;}
 table.sched{
   width:100%;

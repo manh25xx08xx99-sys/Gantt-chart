@@ -430,7 +430,11 @@ function computeLayout(model, colWidths){
   var manpowerMode = !!model.manpowerMode;
   var ROWS_PER_TASK = manpowerMode ? 3 : 2; // 備考＋（人工数入力）＋矢印
   var headerTop = 1;                // 行2〜5：年／月／日／曜日
-  var taskTop = headerTop + headRows;
+  // 重要日（マイルストーン）の◆と文字を置く行。1つも無いときは行自体を作らない
+  var milestones = Array.isArray(model.milestones) ? model.milestones : [];
+  var MILESTONE_ROWS = milestones.length > 0 ? 1 : 0;
+  var milestoneTop = headerTop + headRows;
+  var taskTop = milestoneTop + MILESTONE_ROWS;
   var LEGEND_ROWS = 3;              // 行事・備考等は3行
   var LEGEND_WHITE1 = 1, LEGEND_GRAY = 2, LEGEND_WHITE2 = 1;
   var LEGEND_SAMPLE_COLS = LEGEND_WHITE1 + LEGEND_GRAY + LEGEND_WHITE2;
@@ -450,8 +454,13 @@ function computeLayout(model, colWidths){
   var ROW_H_HEAD = 15;
   var ROW_H_TASK = 18;
   var ROW_H_PROGRESS = 15;
+  var ROW_H_MILESTONE = 16;
   var colLeft = function(colIndex){ return colIndex === 0 ? 0 : COL_W_NAME + (colIndex - 1) * COL_W_DAY; };
-  var taskRowTop = function(i){ return ROW_H_TITLE + headRows * ROW_H_HEAD + i * ROWS_PER_TASK * ROW_H_TASK; };
+  var milestoneBlockTop = ROW_H_TITLE + headRows * ROW_H_HEAD;
+  var taskBlockTop = milestoneBlockTop + MILESTONE_ROWS * ROW_H_MILESTONE;
+  var taskRowTop = function(i){ return taskBlockTop + i * ROWS_PER_TASK * ROW_H_TASK; };
+  // 日付列の中央のX座標（◆・たて線・進捗線など、1日を指し示す図形の基準）
+  var dayCenterX = function(idx){ return colLeft(1 + idx) + COL_W_DAY / 2; };
   var progressBlockTop = taskRowTop(rowsOut.length) + LEGEND_ROWS * ROW_H_HEAD;
   var progressChartHeight = PROGRESS_ROWS * ROW_H_PROGRESS;
   var pctToY = function(pct){
@@ -463,6 +472,9 @@ function computeLayout(model, colWidths){
 
   return {
     days: days, rowsOut: rowsOut, nCols: nCols, headRows: headRows, manpowerMode: manpowerMode, ROWS_PER_TASK: ROWS_PER_TASK,
+    milestones: milestones, MILESTONE_ROWS: MILESTONE_ROWS, milestoneTop: milestoneTop,
+    ROW_H_MILESTONE: ROW_H_MILESTONE, milestoneBlockTop: milestoneBlockTop, taskBlockTop: taskBlockTop,
+    dayCenterX: dayCenterX,
     headerTop: headerTop, taskTop: taskTop, LEGEND_ROWS: LEGEND_ROWS,
     LEGEND_WHITE1: LEGEND_WHITE1, LEGEND_GRAY: LEGEND_GRAY, LEGEND_WHITE2: LEGEND_WHITE2, LEGEND_SAMPLE_COLS: LEGEND_SAMPLE_COLS,
     legendTop: legendTop, showProgress: showProgress, PROGRESS_ROWS: PROGRESS_ROWS, PROGRESS_INFO_ROWS: PROGRESS_INFO_ROWS,
@@ -481,11 +493,13 @@ var SHEET_GANTT = "ガントチャート";
 var HEADER_FILL = "#f5f1e9";
 var SHADE_FILL = "#d9d9d9";
 var GRID_LINE = "#cccccc";
+var MILESTONE_COLOR = "#c62828"; // 重要日の◆・強調たて線の色
 
 var rows = [];          // [{id, name, start:"YYYY-MM-DD", end:"YYYY-MM-DD", note, color}]
 var nextId = 1;
 var workOnSaturday = true;
 var specialHolidays = []; // 特別休業日 ["YYYY-MM-DD", ...]（日曜・祝日と同じ休み扱い）
+var milestones = [];      // 重要日 [{iso:"YYYY-MM-DD", label:"中間検査", line:true}]
 var showProgressChart = false; // 進捗率グラフ（出来高累計％の折れ線）も出力するか
 var manpowerMode = false; // 労務者数グラフ（各作業に人工数入力行を追加）を使うか
 var displayRange = "endMonth"; // ガントチャートの表示期間（DISPLAY_RANGESのいずれか）
@@ -570,7 +584,8 @@ function saveState(){
   var payload = {
     rows: rows, nextId: nextId, workOnSaturday: workOnSaturday,
     specialHolidays: specialHolidays, showProgressChart: showProgressChart,
-    manpowerMode: manpowerMode, displayRange: displayRange, colWidthsPct: colWidthsPct
+    manpowerMode: manpowerMode, displayRange: displayRange, colWidthsPct: colWidthsPct,
+    milestones: milestones
   };
   var settings = docSettings();
   if(settings){
@@ -604,6 +619,10 @@ function loadState(){
   nextId = saved.nextId || (rows.length + 1);
   workOnSaturday = saved.workOnSaturday !== false;
   specialHolidays = Array.isArray(saved.specialHolidays) ? saved.specialHolidays : [];
+  milestones = Array.isArray(saved.milestones)
+    ? saved.milestones.filter(function(m){ return m && typeof m.iso === "string"; })
+        .map(function(m){ return { iso: m.iso, label: String(m.label || ""), line: m.line !== false }; })
+    : [];
   showProgressChart = !!saved.showProgressChart;
   manpowerMode = !!saved.manpowerMode;
   displayRange = normalizeDisplayRange(saved.displayRange, saved.fullStartMonth);
@@ -661,6 +680,73 @@ function renderSpecialHolidays(){
     return '<span class="holiday-chip">' + escHtml(label) +
       '<button type="button" class="holiday-del" data-iso="' + iso + '" title="この日を削除">✕</button></span>';
   }).join("");
+}
+
+// ---- 重要日（マイルストーン）：検査日・引渡日などの節目に◆と文字を置く。
+//      「たて線」を付けると、その日に縦線を引いて工程表全体で目立たせる ----
+function addMilestone(){
+  var input = document.getElementById("milestoneDate");
+  var labelInput = document.getElementById("milestoneLabel");
+  if(!input) return;
+  var d = syncDateField(input);
+  if(!d){
+    setStatus(input.value.trim()
+      ? "日付は yyyy/mm/dd の形式で入力してください（例：2026/09/16）。"
+      : "重要日の日付を指定してください。", true);
+    return;
+  }
+  var iso = toISODate(d);
+  if(milestones.some(function(m){ return m.iso === iso; })){
+    setStatus("その日は既に重要日として追加されています。", true);
+    return;
+  }
+  var label = labelInput ? labelInput.value.trim() : "";
+  milestones.push({ iso: iso, label: label, line: true });
+  milestones.sort(function(a, b){ return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+  saveState();
+  renderMilestones();
+  setStatus(formatJapaneseDate(d) + "（" + WEEKDAY_JP[d.getDay()] + "）を重要日にしました。🔄 ガントチャートを生成し直すと反映されます。");
+  input.value = "";
+  syncDateField(input);
+  if(labelInput) labelInput.value = "";
+}
+function removeMilestone(iso){
+  milestones = milestones.filter(function(m){ return m.iso !== iso; });
+  saveState();
+  renderMilestones();
+}
+// ◆だけにするか、たて線も引くかの切り替え
+function toggleMilestoneLine(iso){
+  milestones.forEach(function(m){ if(m.iso === iso) m.line = !m.line; });
+  saveState();
+  renderMilestones();
+}
+function renderMilestones(){
+  var list = document.getElementById("milestoneList");
+  if(!list) return;
+  if(milestones.length === 0){
+    list.innerHTML = '<span class="holiday-empty">まだありません。追加すると、その日に◆と内容が入ります。</span>';
+    return;
+  }
+  list.innerHTML = milestones.map(function(m){
+    var d = fromISODate(m.iso);
+    var label = d ? formatJapaneseDate(d) + "（" + WEEKDAY_JP[d.getDay()] + "）" : m.iso;
+    if(m.label) label += " " + m.label;
+    return '<span class="holiday-chip ms-chip">◆ ' + escHtml(label) +
+      '<button type="button" class="ms-line' + (m.line ? " on" : "") + '" data-iso="' + m.iso +
+        '" title="この日にたて線を引く／引かない">│</button>' +
+      '<button type="button" class="ms-del" data-iso="' + m.iso + '" title="この重要日を削除">✕</button></span>';
+  }).join("");
+}
+// 入力された重要日を、工程表の日付列の何番目かに変換する（期間外の日は描かない）
+function resolveMilestones(list, days){
+  if(!Array.isArray(list) || !days || days.length === 0) return [];
+  var indexByIso = {};
+  days.forEach(function(d, idx){ indexByIso[toISODate(d)] = idx; });
+  return list.map(function(m){
+    var idx = indexByIso[m.iso];
+    return idx === undefined ? null : { idx: idx, label: String(m.label || ""), line: m.line !== false };
+  }).filter(Boolean);
 }
 
 function escHtml(s){
@@ -1224,6 +1310,7 @@ function generateGantt(){
   }
   model.showProgressChart = showProgressChart;
   model.manpowerMode = manpowerMode;
+  model.milestones = resolveMilestones(milestones, model.days);
   var L = computeLayout(model);
   setStatus("生成中...");
 
@@ -1253,10 +1340,16 @@ function generateGantt(){
       used.load("columnIndex,columnCount");
       var head = oldSheet.getRangeByIndexes(L.headerTop, 1, 3, 1);
       head.load("values");
+      // 重要日の行は、重要日が1つも無いときは作られない。旧シートに重要日の行が
+      // あったかどうかで作業行の開始位置が1行ずれるので、A列の見出しで判定する
+      var msProbe = oldSheet.getRangeByIndexes(L.headerTop + L.headRows, 0, 1, 1);
+      msProbe.load("values");
       var blockRange = null;
       return ctx.sync().then(function(){
         var oldWidth = Math.max(L.days.length, used.columnIndex + used.columnCount - 1);
-        blockRange = oldSheet.getRangeByIndexes(L.taskTop, 1, L.rowsOut.length * L.ROWS_PER_TASK, oldWidth);
+        var oldHadMilestoneRow = String((msProbe.values[0] || [])[0] || "").trim() === "重要日";
+        var oldTaskTop = L.headerTop + L.headRows + (oldHadMilestoneRow ? 1 : 0);
+        blockRange = oldSheet.getRangeByIndexes(oldTaskTop, 1, L.rowsOut.length * L.ROWS_PER_TASK, oldWidth);
         blockRange.load("values");
         return ctx.sync();
       }).then(function(){
@@ -1695,6 +1788,8 @@ async function writeGanttSheet(ctx, model, sheet){
       MANPOWER_CHART_ROWS = L.MANPOWER_CHART_ROWS, manpowerChartTop = L.manpowerChartTop, nRows = L.nRows,
       COL_W_NAME = L.COL_W_NAME, COL_W_DAY = L.COL_W_DAY, ROW_H_TITLE = L.ROW_H_TITLE, ROW_H_HEAD = L.ROW_H_HEAD,
       ROW_H_TASK = L.ROW_H_TASK, ROW_H_PROGRESS = L.ROW_H_PROGRESS,
+      milestones = L.milestones, MILESTONE_ROWS = L.MILESTONE_ROWS, milestoneTop = L.milestoneTop,
+      ROW_H_MILESTONE = L.ROW_H_MILESTONE, milestoneBlockTop = L.milestoneBlockTop, dayCenterX = L.dayCenterX,
       colLeft = L.colLeft, taskRowTop = L.taskRowTop, progressBlockTop = L.progressBlockTop,
       progressChartHeight = L.progressChartHeight, pctToY = L.pctToY,
       manpowerBlockTop = L.manpowerBlockTop, manpowerChartHeight = L.manpowerChartHeight;
@@ -1719,6 +1814,8 @@ async function writeGanttSheet(ctx, model, sheet){
   grid.push(padRow(monthRow, nCols));
   grid.push([""].concat(days.map(function(d){ return d.getDate(); })));
   grid.push([""].concat(model.dayInfos.map(function(d){ return d.dowChar; })));
+  // 重要日（マイルストーン）の行。セルは空のままで、◆と文字は図形として重ねて描く
+  for(var msr = 0; msr < MILESTONE_ROWS; msr++) grid.push(padRow(["重要日"], nCols));
   rowsOut.forEach(function(r){
     var noteLine = [r.name];
     for(var i = 0; i < days.length; i++){
@@ -1779,6 +1876,7 @@ async function writeGanttSheet(ctx, model, sheet){
   sheet.getRangeByIndexes(0, 1, 1, days.length).format.columnWidth = COL_W_DAY;
   sheet.getRangeByIndexes(0, 0, 1, nCols).format.rowHeight = ROW_H_TITLE;
   sheet.getRangeByIndexes(headerTop, 0, headRows, nCols).format.rowHeight = ROW_H_HEAD;
+  if(MILESTONE_ROWS) sheet.getRangeByIndexes(milestoneTop, 0, MILESTONE_ROWS, nCols).format.rowHeight = ROW_H_MILESTONE;
   if(rowsOut.length > 0) sheet.getRangeByIndexes(taskTop, 0, rowsOut.length * ROWS_PER_TASK, nCols).format.rowHeight = ROW_H_TASK;
   sheet.getRangeByIndexes(legendTop, 0, LEGEND_ROWS, nCols).format.rowHeight = ROW_H_HEAD;
   if(showProgress){
@@ -1809,7 +1907,7 @@ async function writeGanttSheet(ctx, model, sheet){
   if(Math.abs(actualColWName - COL_W_NAME) > 0.01 || Math.abs(actualColWDay - COL_W_DAY) > 0.01){
     L = computeLayout(model, { COL_W_NAME: actualColWName, COL_W_DAY: actualColWDay });
     COL_W_NAME = L.COL_W_NAME; COL_W_DAY = L.COL_W_DAY;
-    colLeft = L.colLeft; taskRowTop = L.taskRowTop;
+    colLeft = L.colLeft; taskRowTop = L.taskRowTop; dayCenterX = L.dayCenterX;
     progressBlockTop = L.progressBlockTop; progressChartHeight = L.progressChartHeight; pctToY = L.pctToY;
     manpowerBlockTop = L.manpowerBlockTop; manpowerChartHeight = L.manpowerChartHeight;
   }
@@ -1863,7 +1961,7 @@ async function writeGanttSheet(ctx, model, sheet){
   var shadedRuns = boolToRuns(model.dayInfos.map(function(d){ return d.shaded; }));
   // 休日の列は日・曜日ヘッダーだけでなく、作業行の範囲まで縦に網掛けする
   // （実際に作業がある稼働日は、この後に描く矢印図形がセルの上に重なって見える）
-  var shadeRowCount = 2 + rowsOut.length * ROWS_PER_TASK;
+  var shadeRowCount = 2 + MILESTONE_ROWS + rowsOut.length * ROWS_PER_TASK;
   shadedRuns.forEach(function(run){
     sheet.getRangeByIndexes(headerTop + 2, 1 + run.start, shadeRowCount, run.count).format.fill.color = SHADE_FILL;
   });
@@ -1936,7 +2034,8 @@ async function writeGanttSheet(ctx, model, sheet){
     }
 
     var top = taskRowTop(i) + barOffset * ROW_H_TASK + (ROW_H_TASK - ARROW_H) / 2;
-    boolToRuns(r.cells).forEach(function(run){
+    var runs = boolToRuns(r.cells);
+    runs.forEach(function(run){
       var arrow = sheet.shapes.addGeometricShape(Excel.GeometricShapeType.rightArrow);
       arrow.left = colLeft(1 + run.start);
       arrow.top = top;
@@ -1946,6 +2045,20 @@ async function writeGanttSheet(ctx, model, sheet){
       arrow.lineFormat.visible = false;
       arrow.name = "gantt-arrow-" + i + "-" + run.start;
     });
+    // 休日をまたいで作業が続く場合、矢印と矢印の間を点線でつなぐ。
+    // 矢印（実働日）＋点線（休日）＝延べ日数が一目で分かり、別々の作業に見えなくなる
+    for(var gi = 0; gi + 1 < runs.length; gi++){
+      var gapLeft = colLeft(1 + runs[gi].start + runs[gi].count);
+      var gapRight = colLeft(1 + runs[gi + 1].start);
+      if(gapRight - gapLeft < 0.5) continue;
+      var midY = top + ARROW_H / 2;
+      var link = sheet.shapes.addLine(gapLeft, midY, gapRight, midY, "Straight");
+      link.placement = "Absolute";
+      link.lineFormat.color = r.color;
+      link.lineFormat.weight = 1.25;
+      link.lineFormat.dashStyle = "Dash";
+      link.name = "gantt-link-" + i + "-" + gi;
+    }
     if(r.noteIndex >= 0){
       var noteCell = sheet.getRangeByIndexes(noteRow, 1 + r.noteIndex, 1, 1);
       noteCell.format.font.size = 8;
@@ -1954,6 +2067,55 @@ async function writeGanttSheet(ctx, model, sheet){
       noteCell.format.verticalAlignment = "Bottom";
     }
   });
+
+  // ---- 重要日（マイルストーン）と強調たて線 ----
+  // ◆は専用行に置き、その右に内容を書く。「たて線」を指定した日は、重要日の行から
+  // 作業行の一番下まで縦線を引いて、検査日・引渡日などの節目を目立たせる
+  if(MILESTONE_ROWS && milestones.length > 0){
+    var msTopY = milestoneBlockTop;
+    var msBottomY = taskRowTop(rowsOut.length);
+    var MS_SIZE = 9;
+    sheet.getRangeByIndexes(milestoneTop, 0, 1, 1).format.font.size = 9;
+    milestones.forEach(function(ms, mi){
+      var cx = dayCenterX(ms.idx);
+      if(ms.line){
+        var vline = sheet.shapes.addLine(cx, msTopY, cx, msBottomY, "Straight");
+        vline.placement = "Absolute";
+        vline.lineFormat.color = MILESTONE_COLOR;
+        vline.lineFormat.weight = 1.25;
+        vline.name = "gantt-milestone-line-" + mi;
+      }
+      var dia = sheet.shapes.addGeometricShape(Excel.GeometricShapeType.diamond);
+      dia.placement = "Absolute";
+      dia.left = cx - MS_SIZE / 2;
+      dia.top = msTopY + (ROW_H_MILESTONE - MS_SIZE) / 2;
+      dia.width = MS_SIZE;
+      dia.height = MS_SIZE;
+      dia.fill.setSolidColor(MILESTONE_COLOR);
+      dia.lineFormat.visible = false;
+      dia.name = "gantt-milestone-" + mi;
+      if(!ms.label) return;
+      try{
+        var lab = sheet.shapes.addTextBox(ms.label);
+        lab.placement = "Absolute";
+        lab.left = cx + MS_SIZE / 2 + 1;
+        lab.top = msTopY + 1;
+        lab.width = Math.max(36, ms.label.length * 9.5);
+        lab.height = ROW_H_MILESTONE - 2;
+        lab.lineFormat.visible = false;
+        lab.fill.clear();
+        lab.name = "gantt-milestone-label-" + mi;
+        lab.textFrame.leftMargin = 0;
+        lab.textFrame.rightMargin = 0;
+        lab.textFrame.topMargin = 0;
+        lab.textFrame.bottomMargin = 0;
+        lab.textFrame.autoSizeSetting = "AutoSizeNone";
+        lab.textFrame.verticalAlignment = "Middle";
+        lab.textFrame.textRange.font.size = 9;
+        lab.textFrame.textRange.font.color = MILESTONE_COLOR;
+      }catch(eMsLabel){}
+    });
+  }
 
   // 凡例行（行事・備考等）：3行のボックス。A列は3行まとめて1つのセルに結合する。
   // 日付列側は左右2つのブロックに分ける：
@@ -2125,12 +2287,31 @@ function initUI(info){
       removeSpecialHoliday(btn.dataset.iso);
     });
   }
+  var addMilestoneBtn = document.getElementById("addMilestoneBtn");
+  if(addMilestoneBtn) addMilestoneBtn.addEventListener("click", addMilestone);
+  ["milestoneDate", "milestoneLabel"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener("keydown", function(e){
+      if(e.key === "Enter"){ e.preventDefault(); addMilestone(); }
+    });
+  });
+  var milestoneList = document.getElementById("milestoneList");
+  if(milestoneList){
+    milestoneList.addEventListener("click", function(e){
+      var lineBtn = e.target.closest(".ms-line");
+      if(lineBtn){ toggleMilestoneLine(lineBtn.dataset.iso); return; }
+      var delBtn = e.target.closest(".ms-del");
+      if(delBtn) removeMilestone(delBtn.dataset.iso);
+    });
+  }
   bindTableEvents();
   bindTableKeyboardNav();
   bindDatePickers();
   bindRowDrag();
   renderRows();
   renderSpecialHolidays();
+  renderMilestones();
   initColumnResize();
 }
 // ============================================================
@@ -2143,7 +2324,7 @@ function initUI(info){
 // ============================================================
 var USAGE_URL = "https://pwykayxctecgicitwwpl.supabase.co/rest/v1/usage_log";
 var USAGE_KEY = "sb_publishable_wlQ1LPTDm-QmH6JRzqAquQ_ZXYAEe6I";
-var USAGE_VERSION = "20261119a";   // taskpane.html のキャッシュ回避パラメータと合わせる
+var USAGE_VERSION = "20261120a";   // taskpane.html のキャッシュ回避パラメータと合わせる
 var USAGE_ID_KEY = "m5gantt.installId";
 
 function usageUuid(){

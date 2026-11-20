@@ -9,3 +9,6 @@ node_modules/
 # 手元用の資料（GitHub には上げない）
 /*.pdf
 /*.pptx
+
+# デスクトップ版（まだ公開しない）
+/webapp/
